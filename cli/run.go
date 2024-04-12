@@ -68,7 +68,9 @@ previous run.`, defaultEndpoint),
 				BridgeSession = uuid.New().String()
 			}
 
-			dialog("Starting Dispatch session: %v", BridgeSession)
+			dialog(`Starting Dispatch session: %v
+
+Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 
 			// Execute the command, forwarding the environment and
 			// setting the necessary extra DISPATCH_* variables.
