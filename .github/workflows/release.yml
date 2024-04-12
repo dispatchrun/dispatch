@@ -1,0 +1,32 @@
+# Stable release of the Dispatch CLI
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    env:
+      GH_TOKEN_HOMEBREW_DISPATCH: ${{ secrets.GH_TOKEN_HOMEBREW_DISPATCH }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: .go-version
+      - uses: goreleaser/goreleaser-action@v4
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN_HOMEBREW_DISPATCH: ${{ env.GH_TOKEN_HOMEBREW_DISPATCH }}
