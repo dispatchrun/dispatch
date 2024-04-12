@@ -70,7 +70,7 @@ previous run.`, defaultEndpoint),
 
 			dialog(`Starting Dispatch session: %v
 
-Run 'dispatch help run' to learn more about Dispatch session.`, BridgeSession)
+Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 
 			// Execute the command, forwarding the environment and
 			// setting the necessary extra DISPATCH_* variables.
