@@ -1,0 +1,57 @@
+name: build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOPRIVATE: github.com/stealthrocket,buf.build/gen/go
+  GOVERSION: 1.22.0
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: bufbuild/buf-setup-action@v1.28.1
+        with:
+          buf_user: ${{ secrets.BUF_USER }}
+          buf_api_token: ${{ secrets.BUF_TOKEN }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GOVERSION }}
+      - run: git config --global url.https://${{ secrets.PRIVATE_REPO }}@github.com.insteadOf https://github.com
+      - run: go mod download
+      - uses: golangci/golangci-lint-action@v3
+        with:
+          version: v1.54.2
+          args: --timeout 4m
+          # Disable caching as a workaround for https://github.com/golangci/golangci-lint-action/issues/135.
+          skip-pkg-cache: true
+
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: bufbuild/buf-setup-action@v1.28.1
+        with:
+          buf_user: ${{ secrets.BUF_USER }}
+          buf_api_token: ${{ secrets.BUF_TOKEN }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GOVERSION }}
+      - run: git config --global url.https://${{ secrets.PRIVATE_REPO }}@github.com.insteadOf https://github.com
+      - run: go mod download
+      - run: go test -cover ./...

@@ -1,0 +1,59 @@
+project_name: dispatch
+dist: ./goreleaser/dist
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: dispatch
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+    goarch:
+      - amd64
+      - arm64
+
+    goos:
+      - darwin
+      - linux
+
+release:
+  github:
+    owner: stealthrocket
+    name: dispatch
+  draft: false
+  prerelease: auto
+  mode: replace
+changelog:
+  use: github-native
+
+brews:
+  - name: dispatch
+    url_template: "https://github.com/stealthrocket/dispatch/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+
+    commit_author:
+      name: stealthrocket-bot
+      email: bot@stealthrocket.tech
+
+    directory: Formula
+
+    homepage: "https://dispatch.run"
+
+    description: "Dispatch"
+
+    license: "Apache 2.0"
+
+    skip_upload: false
+
+    test: |
+      system "#{bin}/dispatch --version"
+
+    repository:
+      owner: stealthrocket
+      name: homebrew-dispatch
+      branch: main
+      token: "{{ .Env.GH_TOKEN_HOMEBREW_DISPATCH }}"
+      pull_request:
+        enabled: true
+        draft: true
