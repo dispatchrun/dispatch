@@ -1,24 +1,43 @@
 # Welcome to Dispatch!
 
-[getting-started]: https://docs.dispatch.run/dispatch/getting-started
-[documentation]: https://docs.dispatch.run
-[discord]: https://dispatch.run/discord
-[python-sdk]: https://python.dispatch.run/main/reference/dispatch
-[protocol]: https://buf.build/stealthrocket/dispatch-proto/docs/main:dispatch.sdk.v1
-[console]: https://console.dispatch.run
+**Dispatch** is a platform for developing scalable & reliable distributed systems.
 
-Dispatch is a platform to build reliable distributed systems. Via a simple programming model,
-it provides the best way to create data pipelines, event-driven systems, workflow as code,
-and much more. Write your Python code as usual, decorate your functions, and you are ready to go!
+## Getting Started
 
-## Getting started
+### Install Dispatch
 
-Create your first durable application using the [Getting Started][getting-started] guide.
+Install with Homebrew on macOS:
 
-## Links
+```console
+brew tap stealthrocket/dispatch
+brew install dispatch
+```
 
-- [Console][console]
-- [Python SDK][python-sdk]
-- [Dispatch Protocol][protocol]
-- [Documentation][documentation]
-- [Discord][discord]
+Install with Go:
+
+```console
+go install github.com/stealthrocket/dispatch@latest
+```
+
+Alternatively, you can download the latest `dispatch` binary from the
+[Releases](https://github.com/stealthrocket/dispatch/releases) page.
+
+### Create an Account
+
+To create a **Dispatch** account, or login to an existing account:
+
+```console
+dispatch login
+```
+
+To manage your account and functions, visit the [Dispatch Console](https://console.dispatch.run).
+
+### Create a Function
+
+To create your first **Dispatch** function, see our
+[Getting Started](https://docs.dispatch.run/dispatch/getting-started) guide.
+
+## Getting Help
+
+See `dispatch help` or our [documentation](https://docs.dispatch.run) for
+further information, or reach out on [Discord](https://dispatch.run/discord).
