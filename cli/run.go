@@ -142,6 +142,8 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 						}
 						time.Sleep(1 * time.Second)
 						continue
+					} else if res == nil {
+						continue
 					}
 
 					atomic.AddInt64(&successfulPolls, +1)
