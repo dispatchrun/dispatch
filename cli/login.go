@@ -40,11 +40,15 @@ If the browser does not open, please visit the following URL:
 			console := &console{}
 
 			var loginErr error
+			var loggedIn bool
 
 			p := tea.NewProgram(newSpinnerModel("Logging in...", func() (tea.Msg, error) {
-				err := console.Login(token)
-				loginErr = err
-				return nil, err
+				if err := console.Login(token); err != nil {
+					loginErr = err
+					return nil, err
+				}
+				loggedIn = true
+				return nil, nil
 			}))
 			if _, err = p.Run(); err != nil {
 				return err
@@ -53,14 +57,13 @@ If the browser does not open, please visit the following URL:
 			if loginErr != nil {
 				failure("Authentication failed. Please contact support at support@dispatch.run")
 				fmt.Printf("Error: %s\n", loginErr)
-				return nil
+			} else if loggedIn {
+				success("Authentication successful")
+				fmt.Printf(
+					"Configuration file created at %s\n",
+					os.ExpandEnv("$HOME/.dispatch.toml"),
+				)
 			}
-
-			success("Authentication successful")
-			fmt.Printf(
-				"Configuration file created at %s\n",
-				os.ExpandEnv("$HOME/.dispatch.toml"),
-			)
 			return nil
 		},
 	}
