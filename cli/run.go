@@ -87,15 +87,14 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 
-			// Pass on environment variables to the local application. Pass on the
-			// configured API key, and set a special endpoint URL for the session.
-			// Unset all DISPATCH_* environment variables, which includes overrides for
-			// the CLI and also the verification key (DISPATCH_VERIFICATION_KEY), so
-			// that they don't conflict with the session. Note that a verification key
-			// is not required here, since function calls are retrieved from an
-			// authenticated API endpoint.
+			// Pass on environment variables to the local application.
+			// Pass on the configured API key, and set a special endpoint
+			// URL for the session. Unset the verification key, so that
+			// it doesn't conflict with the session. A verification key
+			// is not required here, since function calls are retrieved
+			// from an authenticated API endpoint.
 			cmd.Env = append(
-				withoutEnv(os.Environ(), "DISPATCH_"),
+				withoutEnv(os.Environ(), "DISPATCH_VERIFICATION_KEY="),
 				"DISPATCH_API_KEY="+DispatchApiKey,
 				"DISPATCH_ENDPOINT_URL=bridge://"+BridgeSession,
 				"DISPATCH_ENDPOINT_ADDR="+LocalEndpoint,
