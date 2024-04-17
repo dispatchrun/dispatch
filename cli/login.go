@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 
@@ -61,7 +60,7 @@ If the browser does not open, please visit the following URL:
 				success("Authentication successful")
 				fmt.Printf(
 					"Configuration file created at %s\n",
-					os.ExpandEnv("$HOME/.dispatch.toml"),
+					DispatchConfigPath,
 				)
 			}
 			return nil
