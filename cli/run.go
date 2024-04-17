@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -329,18 +330,12 @@ func cleanup(ctx context.Context, client *http.Client, url, requestID string) er
 }
 
 func withoutEnv(env []string, prefixes ...string) []string {
-	result := make([]string, 0, len(env))
-	for _, v := range env {
-		ok := true
+	return slices.DeleteFunc(env, func(v string) bool {
 		for _, prefix := range prefixes {
 			if strings.HasPrefix(v, prefix) {
-				ok = false
-				break
+				return true
 			}
 		}
-		if ok {
-			result = append(result, v)
-		}
-	}
-	return result
+		return false
+	})
 }
