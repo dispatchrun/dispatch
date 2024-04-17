@@ -111,11 +111,6 @@ func runConfigFlow() error {
 		}
 	}
 
-	if key := os.Getenv("DISPATCH_API_KEY"); key != "" {
-		DispatchApiKey = key
-		DispatchApiKeyLocation = "env"
-	}
-
 	if key := DispatchApiKeyCli; key != "" {
 		DispatchApiKey = key
 		DispatchApiKeyLocation = "cli"
@@ -125,7 +120,7 @@ func runConfigFlow() error {
 		if len(config) > 0 {
 			return fmt.Errorf("No organization selected. Please run `dispatch switch` to select one.")
 		}
-		return fmt.Errorf("Please run `dispatch login` to login to Dispatch. Alternatively, set the DISPATCH_API_KEY environment variable, or provide an --api-key (-k) on the command line.")
+		return fmt.Errorf("Please run `dispatch login` to login to Dispatch. Alternatively, provide an --api-key (-k) on the command line.")
 	}
 	return nil
 }

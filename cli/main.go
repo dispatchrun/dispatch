@@ -23,7 +23,7 @@ Support: support@dispatch.run
 			return cmd.Help()
 		},
 	}
-	cmd.PersistentFlags().StringVarP(&DispatchApiKeyCli, "api-key", "k", "", "Dispatch API key (env: DISPATCH_API_KEY)")
+	cmd.PersistentFlags().StringVarP(&DispatchApiKeyCli, "api-key", "k", "", "Dispatch API key override")
 
 	cmd.AddGroup(&cobra.Group{
 		ID:    "management",
