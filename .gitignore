@@ -8,9 +8,11 @@
 *.so
 *.dylib
 /build
+/dispatch
 
 # Test binary, built with `go test -c`
 *.test
+*.py
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out

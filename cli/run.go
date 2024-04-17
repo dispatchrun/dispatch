@@ -27,7 +27,7 @@ var (
 	LocalEndpoint string
 )
 
-const defaultEndpoint = "[::]:8000"
+const defaultEndpoint = "127.0.0.1:8000"
 
 const (
 	pollTimeout    = 30 * time.Second
