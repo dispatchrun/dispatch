@@ -11,10 +11,9 @@ import (
 )
 
 var (
-	DispatchApiKey          string
-	DispatchApiKeyCli       string
-	DispatchApiKeyLocation  string
-	DispatchVerificationKey string
+	DispatchApiKey         string
+	DispatchApiKeyCli      string
+	DispatchApiKeyLocation string
 
 	DispatchApiUrl           string
 	DispatchBridgeUrl        string
@@ -36,10 +35,6 @@ func init() {
 		DispatchBridgeUrl = "https://bridge.dispatch.run"
 	}
 	DispatchBridgeHostHeader = os.Getenv("DISPATCH_BRIDGE_HOST_HEADER")
-
-	if key := os.Getenv("DISPATCH_VERIFICATION_KEY"); key != "" {
-		DispatchVerificationKey = key
-	}
 
 	DispatchConsoleUrl = os.Getenv("DISPATCH_CONSOLE_URL")
 	if DispatchConsoleUrl == "" {
