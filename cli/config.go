@@ -52,14 +52,22 @@ func init() {
 	}
 }
 
-type Config map[string]Keys
+type Config struct {
+	// Warning is printed as a comment at the beginning of the configuration file.
+	Warning string `toml:",commented"`
 
-type Keys struct {
-	Active bool   `toml:"active,omitempty"`
-	ApiKey string `toml:"api_key"`
+	// Active is the active organization.
+	Active string `toml:"active,omitempty"`
+
+	// Organization is the set of organizations and their API keys.
+	Organization map[string]Organization `toml:"Organizations"`
 }
 
-func CreateConfig(path string, config Config) error {
+type Organization struct {
+	APIKey string `toml:"api_key"`
+}
+
+func CreateConfig(path string, config *Config) error {
 	pathdir := filepath.Dir(path)
 	if err := os.MkdirAll(pathdir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory %v: %w", pathdir, err)
@@ -72,13 +80,13 @@ func CreateConfig(path string, config Config) error {
 	return writeConfig(fh, config)
 }
 
-func writeConfig(w io.Writer, config Config) error {
+func writeConfig(w io.Writer, config *Config) error {
 	e := toml.NewEncoder(w)
 	return e.Encode(config)
 }
 
 // TODO: validate configuration to ensure only one organization is active.
-func LoadConfig(path string) (Config, error) {
+func LoadConfig(path string) (*Config, error) {
 	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -87,13 +95,13 @@ func LoadConfig(path string) (Config, error) {
 	return loadConfig(bufio.NewReader(fh))
 }
 
-func loadConfig(r io.Reader) (Config, error) {
+func loadConfig(r io.Reader) (*Config, error) {
 	d := toml.NewDecoder(r)
-	f := make(Config)
-	if err := d.Decode(&f); err != nil {
+	var c Config
+	if err := d.Decode(&c); err != nil {
 		return nil, err
 	}
-	return f, nil
+	return &c, nil
 }
 
 func runConfigFlow() error {
@@ -104,19 +112,13 @@ func runConfigFlow() error {
 		}
 	}
 
-	if len(config) == 1 {
-		for org := range config {
-			k := config[org]
-			k.Active = true
-			config[org] = k
+	if config.Active != "" {
+		org, ok := config.Organization[config.Active]
+		if !ok {
+			return fmt.Errorf("invalid active organization '%s' found in configuration. Please run `dispatch login` or `dispatch switch`", config.Active)
 		}
-	}
-
-	for _, keys := range config {
-		if keys.Active {
-			DispatchApiKey = keys.ApiKey
-			DispatchApiKeyLocation = "config"
-		}
+		DispatchApiKey = org.APIKey
+		DispatchApiKeyLocation = "config"
 	}
 
 	if key := os.Getenv("DISPATCH_API_KEY"); key != "" {
@@ -130,7 +132,7 @@ func runConfigFlow() error {
 	}
 
 	if DispatchApiKey == "" {
-		if len(config) > 0 {
+		if len(config.Organization) > 0 {
 			return fmt.Errorf("No organization selected. Please run `dispatch switch` to select one.")
 		}
 		return fmt.Errorf("Please run `dispatch login` to login to Dispatch. Alternatively, set the DISPATCH_API_KEY environment variable, or provide an --api-key (-k) on the command line.")
