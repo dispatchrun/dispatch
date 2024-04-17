@@ -52,13 +52,18 @@ func (c *console) Login(token string) error {
 		break
 	}
 
-	config := make(Config)
+	var config Config
+	config.Warning = "THIS FILE IS GENERATED. DO NOT EDIT!"
+	config.Organization = map[string]Organization{}
 
 	for i, org := range clilogin.Organizations {
-		config[org.Slug] = Keys{ApiKey: org.ApiKey, Active: i == 0}
+		config.Organization[org.Slug] = Organization{APIKey: org.ApiKey}
+		if i == 0 {
+			config.Active = org.Slug
+		}
 	}
 
-	if err := CreateConfig(DispatchConfigPath, config); err != nil {
+	if err := CreateConfig(DispatchConfigPath, &config); err != nil {
 		return fmt.Errorf("failed to create config: %w", err)
 	}
 	return nil

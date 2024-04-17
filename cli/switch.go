@@ -32,7 +32,7 @@ To manage your organizations, visit the Dispatch Console: https://console.dispat
 			// List organizations if no arguments were provided.
 			if len(args) == 0 {
 				fmt.Println("Available organizations:")
-				for org := range cfg {
+				for org := range cfg.Organization {
 					fmt.Println("-", org)
 				}
 				return nil
@@ -40,28 +40,19 @@ To manage your organizations, visit the Dispatch Console: https://console.dispat
 
 			// Otherwise, try to switch to the specified organization.
 			name := args[0]
-			_, ok := cfg[name]
+			_, ok := cfg.Organization[name]
 			if !ok {
 				failure(fmt.Sprintf("Organization '%s' not found", name))
 
 				fmt.Println("Available organizations:")
-				for org := range cfg {
+				for org := range cfg.Organization {
 					fmt.Println("-", org)
 				}
 				return nil
 			}
 
 			simple(fmt.Sprintf("Switched to organization: %v", name))
-			for org, keys := range cfg {
-				if keys.Active && org != name {
-					keys.Active = false
-					cfg[org] = keys
-				}
-				if org == name {
-					keys.Active = true
-					cfg[org] = keys
-				}
-			}
+			cfg.Active = name
 			return CreateConfig(DispatchConfigPath, cfg)
 		},
 	}
