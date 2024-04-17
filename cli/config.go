@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -22,8 +23,6 @@ var (
 
 	DispatchConfigPath string
 )
-
-const defaultConfigPath = "$HOME/.dispatch.toml"
 
 func init() {
 	DispatchApiUrl = os.Getenv("DISPATCH_API_URL")
@@ -44,7 +43,12 @@ func init() {
 	if configPath := os.Getenv("DISPATCH_CONFIG_PATH"); configPath != "" {
 		DispatchConfigPath = configPath
 	} else {
-		DispatchConfigPath = os.ExpandEnv(defaultConfigPath)
+		// https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			configHome = "$HOME/.config"
+		}
+		DispatchConfigPath = filepath.Join(os.ExpandEnv(configHome), "dispatch/config.toml")
 	}
 }
 
@@ -56,9 +60,13 @@ type Keys struct {
 }
 
 func CreateConfig(path string, config Config) error {
-	fh, err := os.Create(os.ExpandEnv(path))
+	pathdir := filepath.Dir(path)
+	if err := os.MkdirAll(pathdir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory %v: %w", pathdir, err)
+	}
+	fh, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		return fmt.Errorf("failed to create config file %v: %w", path, err)
 	}
 	defer fh.Close()
 	return writeConfig(fh, config)
