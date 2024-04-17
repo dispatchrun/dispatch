@@ -27,7 +27,7 @@ var (
 	LocalEndpoint string
 )
 
-const defaultEndpoint = "localhost:8000"
+const defaultEndpoint = "[::]:8000"
 
 const (
 	pollTimeout    = 30 * time.Second
@@ -55,7 +55,9 @@ calls to it continuously.
 
 Dispatch connects to the local application on http://%s.
 If the local application is listening on a different host or port,
-please set the --endpoint option appropriately.
+please set the --endpoint option appropriately. The value passed to
+this option will be exported as the DISPATCH_ENDPOINT_ADDR environment
+variable to the local application.
 
 A new session is created each time the command is run. A session is
 a pristine environment in which function calls can be dispatched and
@@ -96,6 +98,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				withoutEnv(os.Environ(), "DISPATCH_"),
 				"DISPATCH_API_KEY="+DispatchApiKey,
 				"DISPATCH_ENDPOINT_URL=bridge://"+BridgeSession,
+				"DISPATCH_ENDPOINT_ADDR="+LocalEndpoint,
 			)
 
 			ctx, cancel := context.WithCancel(context.Background())
