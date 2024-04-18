@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -45,15 +46,15 @@ func runCommand() *cobra.Command {
 		Short: "Run a Dispatch application",
 		Long: fmt.Sprintf(`Run a Dispatch application.
 
-The command to start the local application should be specified
-after the run command and its options:
+The command to start the local application endpoint should be
+specified after the run command and its options:
 
   dispatch run [options] -- <command>
 
-Dispatch spawns the local application and then dispatches function
-calls to it continuously.
+Dispatch spawns the local application endpoint and then dispatches
+function calls to it continuously.
 
-Dispatch connects to the local application on http://%s.
+Dispatch connects to the local application endpoint on http://%s.
 If the local application is listening on a different host or port,
 please set the --endpoint option appropriately. The value passed to
 this option will be exported as the DISPATCH_ENDPOINT_ADDR environment
@@ -165,6 +166,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 						defer wg.Done()
 
 						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res)
+						res.Body.Close()
 						if err != nil {
 							if ctx.Err() == nil {
 								slog.Warn(err.Error())
@@ -209,7 +211,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 	}
 
 	cmd.Flags().StringVarP(&BridgeSession, "session", "s", "", "Optional session to resume")
-	cmd.Flags().StringVarP(&LocalEndpoint, "endpoint", "e", defaultEndpoint, "Host:port that the local application is listening on")
+	cmd.Flags().StringVarP(&LocalEndpoint, "endpoint", "e", defaultEndpoint, "Host:port that the local application endpoint is listening on")
 
 	return cmd
 }
@@ -253,45 +255,56 @@ func poll(ctx context.Context, client *http.Client, url string) (string, *http.R
 }
 
 func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response) error {
-	defer bridgeGetRes.Body.Close()
-
 	slog.Debug("sending request from Dispatch API to local application", "endpoint", LocalEndpoint, "request_id", requestID)
 
-	// Extract the nested header/body.
+	// Extract the nested request header/body.
 	endpointReq, err := http.ReadRequest(bufio.NewReader(bridgeGetRes.Body))
 	if err != nil {
 		return fmt.Errorf("invalid response from Dispatch API: %v", err)
 	}
 	endpointReq = endpointReq.WithContext(ctx)
 
+	// Buffer the request body in memory.
+	// TODO: resize if Content-Length is known?
+	// TODO: use a pool for buffers?
+	endpointReqBody := &bytes.Buffer{}
+	_, err = io.Copy(endpointReqBody, endpointReq.Body)
+	bridgeGetRes.Body.Close()
+	endpointReq.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to read response from Dispatch API: %v", err)
+	}
+	endpointReq.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(endpointReqBody.Bytes())), nil
+	}
+	endpointReq.Body, _ = endpointReq.GetBody()
+
 	// The RequestURI field must be cleared for client.Do() to
 	// accept the request below.
 	endpointReq.RequestURI = ""
 
-	// Forward the request to the local application.
+	// Forward the request to the local application endpoint.
 	endpointReq.Host = LocalEndpoint
 	endpointReq.URL.Scheme = "http"
 	endpointReq.URL.Host = LocalEndpoint
 	endpointRes, err := client.Do(endpointReq)
 	if err != nil {
-		return fmt.Errorf("failed to contact local application (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
+		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
 	}
-	defer endpointRes.Body.Close()
-
-	bridgeGetRes.Body.Close()
 
 	// Buffer the response from the endpoint.
-	// TODO: pipe it into the request below
-	var bufferedEndpointRes bytes.Buffer
-	if err := endpointRes.Write(&bufferedEndpointRes); err != nil {
-		return fmt.Errorf("failed to read response from local application (%s): %v", LocalEndpoint, err)
-	}
+	// TODO: use a pool for buffers?
+	bufferedEndpointRes := &bytes.Buffer{}
+	err = endpointRes.Write(bufferedEndpointRes)
 	endpointRes.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
+	}
 
 	slog.Debug("sending local application's response to Dispatch API", "request_id", requestID)
 
 	// Send the response back to the API.
-	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(&bufferedEndpointRes))
+	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(bufferedEndpointRes))
 	if err != nil {
 		panic(err)
 	}
