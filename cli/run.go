@@ -302,19 +302,40 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
 	}
 
-	// Buffer the response from the local endpoint.
-	bufferedEndpointRes := &bytes.Buffer{}
-	bufferedEndpointRes.Grow(int(endpointRes.ContentLength) + 1024 /* room for headers */)
-	err = endpointRes.Write(bufferedEndpointRes)
+	// Buffer the response body in memory.
+	endpointResBody := &bytes.Buffer{}
+	if endpointRes.ContentLength > 0 {
+		endpointResBody.Grow(int(endpointRes.ContentLength))
+	}
+	_, err = io.Copy(endpointResBody, endpointRes.Body)
 	endpointRes.Body.Close()
 	if err != nil {
 		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
 	}
+	endpointRes.Body = io.NopCloser(endpointResBody)
+
+	// Parse the response body from the API.
+	if endpointRes.Header.Get("Content-Type") == "application/proto" {
+		var runResponse sdkv1.RunResponse
+		if err := proto.Unmarshal(endpointResBody.Bytes(), &runResponse); err != nil {
+			return fmt.Errorf("invalid response from local application endpoint (%s): %v", LocalEndpoint, err)
+		}
+	} else {
+		// TODO: response might indicate some other issue, e.g. it could be a 404 if the function can't be found
+		_ = endpointRes.StatusCode
+	}
+
+	// Use io.Pipe to convert the response writer into an io.Reader.
+	pr, pw := io.Pipe()
+	go func() {
+		err := endpointRes.Write(pw)
+		pw.CloseWithError(err)
+	}()
 
 	slog.Debug("sending local application's response to Dispatch API", "request_id", requestID)
 
 	// Send the response back to the API.
-	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(bufferedEndpointRes))
+	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(pr))
 	if err != nil {
 		panic(err)
 	}
@@ -325,7 +346,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	}
 	bridgePostRes, err := client.Do(bridgePostReq)
 	if err != nil {
-		return fmt.Errorf("failed to contact Dispatch API: %v", err)
+		return fmt.Errorf("failed to contact Dispatch API or write response: %v", err)
 	}
 	if bridgePostRes.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("failed to contact Dispatch API: response code %d", bridgePostRes.StatusCode)
