@@ -265,9 +265,10 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	endpointReq = endpointReq.WithContext(ctx)
 
 	// Buffer the request body in memory.
-	// TODO: resize if Content-Length is known?
-	// TODO: use a pool for buffers?
 	endpointReqBody := &bytes.Buffer{}
+	if endpointReq.ContentLength > 0 {
+		endpointReqBody.Grow(int(endpointReq.ContentLength))
+	}
 	_, err = io.Copy(endpointReqBody, endpointReq.Body)
 	bridgeGetRes.Body.Close()
 	endpointReq.Body.Close()
@@ -293,8 +294,8 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	}
 
 	// Buffer the response from the endpoint.
-	// TODO: use a pool for buffers?
 	bufferedEndpointRes := &bytes.Buffer{}
+	bufferedEndpointRes.Grow(int(endpointRes.ContentLength) + 1024 /* room for headers */)
 	err = endpointRes.Write(bufferedEndpointRes)
 	endpointRes.Body.Close()
 	if err != nil {
