@@ -21,6 +21,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
+
+	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 )
 
 var (
@@ -280,6 +283,12 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	}
 	endpointReq.Body, _ = endpointReq.GetBody()
 
+	// Parse the request body from the API.
+	var runRequest sdkv1.RunRequest
+	if err := proto.Unmarshal(endpointReqBody.Bytes(), &runRequest); err != nil {
+		return fmt.Errorf("invalid response from Dispatch API: %v", err)
+	}
+
 	// The RequestURI field must be cleared for client.Do() to
 	// accept the request below.
 	endpointReq.RequestURI = ""
@@ -293,7 +302,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
 	}
 
-	// Buffer the response from the endpoint.
+	// Buffer the response from the local endpoint.
 	bufferedEndpointRes := &bytes.Buffer{}
 	bufferedEndpointRes.Grow(int(endpointRes.ContentLength) + 1024 /* room for headers */)
 	err = endpointRes.Write(bufferedEndpointRes)
