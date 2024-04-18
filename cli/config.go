@@ -112,7 +112,7 @@ func runConfigFlow() error {
 		}
 	}
 
-	if config.Active != "" {
+	if config != nil && config.Active != "" {
 		org, ok := config.Organization[config.Active]
 		if !ok {
 			return fmt.Errorf("invalid active organization '%s' found in configuration. Please run `dispatch login` or `dispatch switch`", config.Active)
@@ -132,7 +132,7 @@ func runConfigFlow() error {
 	}
 
 	if DispatchApiKey == "" {
-		if len(config.Organization) > 0 {
+		if config != nil && len(config.Organization) > 0 {
 			return fmt.Errorf("No organization selected. Please run `dispatch switch` to select one.")
 		}
 		return fmt.Errorf("Please run `dispatch login` to login to Dispatch. Alternatively, set the DISPATCH_API_KEY environment variable, or provide an --api-key (-k) on the command line.")
