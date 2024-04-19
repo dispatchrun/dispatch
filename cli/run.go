@@ -226,7 +226,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 }
 
 func poll(ctx context.Context, client *http.Client, url string) (string, *http.Response, error) {
-	slog.Debug("getting request from API", "url", url)
+	slog.Debug("getting request from Dispatch", "url", url)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -264,7 +264,7 @@ func poll(ctx context.Context, client *http.Client, url string) (string, *http.R
 }
 
 func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response) error {
-	slog.Debug("sending request from Dispatch to local application", "endpoint", LocalEndpoint, "request_id", requestID)
+	slog.Debug("sending request to local application", "endpoint", LocalEndpoint, "request_id", requestID)
 
 	// Extract the nested request header/body.
 	endpointReq, err := http.ReadRequest(bufio.NewReader(bridgeGetRes.Body))
@@ -359,7 +359,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		pw.CloseWithError(err)
 	}()
 
-	slog.Debug("sending local application response to Dispatch", "request_id", requestID)
+	slog.Debug("sending response to Dispatch", "request_id", requestID)
 
 	// Send the response back to the API.
 	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(pr))
