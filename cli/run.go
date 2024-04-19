@@ -77,24 +77,58 @@ previous run.`, defaultEndpoint),
 		},
 		RunE: func(c *cobra.Command, args []string) error {
 			if Verbose {
-				slog.SetLogLoggerLevel(slog.LevelDebug)
+				prefix := []byte("dispatch | ")
+				if Color {
+					prefix = []byte("\033[32mdispatch\033[0m \033[90m|\033[0m ")
+				}
+				// Print Dispatch logs with a prefix in verbose mode.
+				slog.SetDefault(slog.New(&prefixHandler{
+					Handler: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+					stream:  os.Stderr,
+					prefix:  prefix,
+				}))
 			}
 
 			if BridgeSession == "" {
 				BridgeSession = uuid.New().String()
 			}
 
-			dialog(`Starting Dispatch session: %v
+			if Verbose {
+				slog.Info("starting session", "session_id", BridgeSession)
+			} else {
+				dialog(`Starting Dispatch session: %v
 
 Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
+			}
 
 			// Execute the command, forwarding the environment and
 			// setting the necessary extra DISPATCH_* variables.
 			cmd := exec.Command(args[0], args[1:]...)
 
 			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
+
+			// When verbose logging is enabled, pipe stdout/stderr streams
+			// through a writer that adds a prefix, so that it's easier
+			// to disambiguate Dispatch logs from the local application's logs.
+			var stdout io.ReadCloser
+			var stderr io.ReadCloser
+			if Verbose {
+				var err error
+				stdout, err = cmd.StdoutPipe()
+				if err != nil {
+					return fmt.Errorf("failed to create stdout pipe: %v", err)
+				}
+				defer stdout.Close()
+
+				stderr, err = cmd.StderrPipe()
+				if err != nil {
+					return fmt.Errorf("failed to create stderr pipe: %v", err)
+				}
+				defer stderr.Close()
+			} else {
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+			}
 
 			// Pass on environment variables to the local application.
 			// Pass on the configured API key, and set a special endpoint
@@ -193,7 +227,22 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				}
 			}()
 
-			err := cmd.Run()
+			err := cmd.Start()
+			if err != nil {
+				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
+			}
+
+			if Verbose {
+				prefix := []byte("endpoint: ")
+				suffix := []byte("\n")
+				if Color {
+					prefix = []byte("\033[35mendpoint \033[90m|\033[0m ")
+				}
+				go printPrefixedLines(os.Stderr, stdout, prefix, suffix)
+				go printPrefixedLines(os.Stderr, stderr, prefix, suffix)
+			}
+
+			err = cmd.Wait()
 
 			// Cancel the context and wait for all goroutines to return.
 			cancel()
@@ -205,7 +254,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			if signaled {
 				err = nil
 
-				if atomic.LoadInt64(&successfulPolls) > 0 {
+				if atomic.LoadInt64(&successfulPolls) > 0 && !Verbose {
 					dialog("To resume this Dispatch session:\n\n\tdispatch run --session %s -- %s",
 						BridgeSession, strings.Join(args, " "))
 				}
@@ -412,4 +461,31 @@ func withoutEnv(env []string, prefixes ...string) []string {
 		}
 		return false
 	})
+}
+
+type prefixHandler struct {
+	slog.Handler
+	stream io.Writer
+	prefix []byte
+	suffix []byte
+}
+
+func (h *prefixHandler) Handle(ctx context.Context, r slog.Record) error {
+	if _, err := h.stream.Write(h.prefix); err != nil {
+		return err
+	}
+	if err := h.Handler.Handle(ctx, r); err != nil {
+		return err
+	}
+	_, err := h.stream.Write(h.suffix)
+	return err
+}
+
+func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		_, _ = w.Write(prefix)
+		_, _ = w.Write(scanner.Bytes())
+		_, _ = w.Write(suffix)
+	}
 }

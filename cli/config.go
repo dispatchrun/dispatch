@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
+	"golang.org/x/term"
 )
 
 var (
@@ -22,6 +23,8 @@ var (
 	DispatchConsoleUrl       string
 
 	DispatchConfigPath string
+
+	Color bool
 )
 
 func init() {
@@ -49,6 +52,18 @@ func init() {
 			configHome = "$HOME/.config"
 		}
 		DispatchConfigPath = filepath.Join(os.ExpandEnv(configHome), "dispatch/config.toml")
+	}
+
+	// Enable color when connected to a terminal, unless the NO_COLOR
+	// environment variable is set (to any value). If the FORCE_COLOR
+	// environment variable is set (to any value), color is unconditionally
+	// enabled.
+	Color = term.IsTerminal(int(os.Stdout.Fd()))
+	if os.Getenv("NO_COLOR") != "" {
+		Color = false
+	}
+	if os.Getenv("FORCE_COLOR") != "" {
+		Color = true
 	}
 }
 
