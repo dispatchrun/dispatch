@@ -488,10 +488,14 @@ func (h *prefixHandler) Handle(ctx context.Context, r slog.Record) error {
 
 func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {
 	scanner := bufio.NewScanner(r)
+	buffer := bytes.NewBuffer(nil)
+	buffer.Write(prefix)
+
 	for scanner.Scan() {
-		_, _ = w.Write(prefix)
-		_, _ = w.Write(scanner.Bytes())
-		_, _ = w.Write(suffix)
+		buffer.Truncate(len(prefix))
+		_, _ = buffer.Write(scanner.Bytes())
+		_, _ = buffer.Write(suffix)
+		w.Write(buffer.Bytes())
 	}
 }
 
