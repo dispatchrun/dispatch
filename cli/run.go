@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -76,10 +77,14 @@ previous run.`, defaultEndpoint),
 			return runConfigFlow()
 		},
 		RunE: func(c *cobra.Command, args []string) error {
+			arg0 := filepath.Base(args[0])
+
+			prefixWidth := max(len("dispatch"), len(arg0))
+
 			if Verbose {
-				prefix := []byte("dispatch | ")
+				prefix := []byte(pad("dispatch", prefixWidth) + " | ")
 				if Color {
-					prefix = []byte("\033[32mdispatch\033[0m \033[90m|\033[0m ")
+					prefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
 				}
 				// Print Dispatch logs with a prefix in verbose mode.
 				slog.SetDefault(slog.New(&prefixHandler{
@@ -233,10 +238,10 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			}
 
 			if Verbose {
-				prefix := []byte("endpoint: ")
+				prefix := []byte(pad(arg0, prefixWidth) + " | ")
 				suffix := []byte("\n")
 				if Color {
-					prefix = []byte("\033[35mendpoint \033[90m|\033[0m ")
+					prefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
 				}
 				go printPrefixedLines(os.Stderr, stdout, prefix, suffix)
 				go printPrefixedLines(os.Stderr, stderr, prefix, suffix)
@@ -488,4 +493,11 @@ func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {
 		_, _ = w.Write(scanner.Bytes())
 		_, _ = w.Write(suffix)
 	}
+}
+
+func pad(s string, width int) string {
+	if len(s) < width {
+		return s + strings.Repeat(" ", width-len(s))
+	}
+	return s
 }
