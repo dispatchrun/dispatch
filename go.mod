@@ -3,15 +3,18 @@ module github.com/stealthrocket/dispatch
 go 1.22.0
 
 require (
+	buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.33.0-20240417235922-27bc9b1d8ccb.1
 	github.com/charmbracelet/bubbles v0.18.0
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.9.1
 	github.com/google/uuid v1.6.0
 	github.com/pelletier/go-toml/v2 v2.2.0
 	github.com/spf13/cobra v1.8.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.33.0-20231115204500-e097f827e652.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

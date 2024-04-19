@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,11 +21,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
+
+	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 )
 
 var (
 	BridgeSession string
 	LocalEndpoint string
+	Verbose       bool
 )
 
 const defaultEndpoint = "127.0.0.1:8000"
@@ -45,15 +50,15 @@ func runCommand() *cobra.Command {
 		Short: "Run a Dispatch application",
 		Long: fmt.Sprintf(`Run a Dispatch application.
 
-The command to start the local application should be specified
-after the run command and its options:
+The command to start the local application endpoint should be
+specified after the run command and its options:
 
   dispatch run [options] -- <command>
 
-Dispatch spawns the local application and then dispatches function
-calls to it continuously.
+Dispatch spawns the local application endpoint and then dispatches
+function calls to it continuously.
 
-Dispatch connects to the local application on http://%s.
+Dispatch connects to the local application endpoint on http://%s.
 If the local application is listening on a different host or port,
 please set the --endpoint option appropriately. The value passed to
 this option will be exported as the DISPATCH_ENDPOINT_ADDR environment
@@ -71,6 +76,10 @@ previous run.`, defaultEndpoint),
 			return runConfigFlow()
 		},
 		RunE: func(c *cobra.Command, args []string) error {
+			if Verbose {
+				slog.SetLogLoggerLevel(slog.LevelDebug)
+			}
+
 			if BridgeSession == "" {
 				BridgeSession = uuid.New().String()
 			}
@@ -165,6 +174,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 						defer wg.Done()
 
 						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res)
+						res.Body.Close()
 						if err != nil {
 							if ctx.Err() == nil {
 								slog.Warn(err.Error())
@@ -209,13 +219,14 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 	}
 
 	cmd.Flags().StringVarP(&BridgeSession, "session", "s", "", "Optional session to resume")
-	cmd.Flags().StringVarP(&LocalEndpoint, "endpoint", "e", defaultEndpoint, "Host:port that the local application is listening on")
+	cmd.Flags().StringVarP(&LocalEndpoint, "endpoint", "e", defaultEndpoint, "Host:port that the local application endpoint is listening on")
+	cmd.Flags().BoolVarP(&Verbose, "verbose", "", false, "Enable verbose logging")
 
 	return cmd
 }
 
 func poll(ctx context.Context, client *http.Client, url string) (string, *http.Response, error) {
-	slog.Debug("getting request from API", "url", url)
+	slog.Debug("getting request from Dispatch", "url", url)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -253,45 +264,105 @@ func poll(ctx context.Context, client *http.Client, url string) (string, *http.R
 }
 
 func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response) error {
-	defer bridgeGetRes.Body.Close()
+	slog.Debug("sending request to local application", "endpoint", LocalEndpoint, "request_id", requestID)
 
-	slog.Debug("sending request from Dispatch API to local application", "endpoint", LocalEndpoint, "request_id", requestID)
-
-	// Extract the nested header/body.
+	// Extract the nested request header/body.
 	endpointReq, err := http.ReadRequest(bufio.NewReader(bridgeGetRes.Body))
 	if err != nil {
 		return fmt.Errorf("invalid response from Dispatch API: %v", err)
 	}
 	endpointReq = endpointReq.WithContext(ctx)
 
+	// Buffer the request body in memory.
+	endpointReqBody := &bytes.Buffer{}
+	if endpointReq.ContentLength > 0 {
+		endpointReqBody.Grow(int(endpointReq.ContentLength))
+	}
+	_, err = io.Copy(endpointReqBody, endpointReq.Body)
+	bridgeGetRes.Body.Close()
+	endpointReq.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to read response from Dispatch API: %v", err)
+	}
+	endpointReq.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(endpointReqBody.Bytes())), nil
+	}
+	endpointReq.Body, _ = endpointReq.GetBody()
+
+	// Parse the request body from the API.
+	var runRequest sdkv1.RunRequest
+	if err := proto.Unmarshal(endpointReqBody.Bytes(), &runRequest); err != nil {
+		return fmt.Errorf("invalid response from Dispatch API: %v", err)
+	}
+	switch d := runRequest.Directive.(type) {
+	case *sdkv1.RunRequest_Input:
+		slog.Debug("calling function", "function", runRequest.Function, "request_id", requestID)
+	case *sdkv1.RunRequest_PollResult:
+		slog.Debug("resuming function", "function", runRequest.Function, "call_results", len(d.PollResult.Results), "request_id", requestID)
+	}
+
 	// The RequestURI field must be cleared for client.Do() to
 	// accept the request below.
 	endpointReq.RequestURI = ""
 
-	// Forward the request to the local application.
+	// Forward the request to the local application endpoint.
 	endpointReq.Host = LocalEndpoint
 	endpointReq.URL.Scheme = "http"
 	endpointReq.URL.Host = LocalEndpoint
 	endpointRes, err := client.Do(endpointReq)
 	if err != nil {
-		return fmt.Errorf("failed to contact local application (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
+		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
 	}
-	defer endpointRes.Body.Close()
 
-	bridgeGetRes.Body.Close()
-
-	// Buffer the response from the endpoint.
-	// TODO: pipe it into the request below
-	var bufferedEndpointRes bytes.Buffer
-	if err := endpointRes.Write(&bufferedEndpointRes); err != nil {
-		return fmt.Errorf("failed to read response from local application (%s): %v", LocalEndpoint, err)
+	// Buffer the response body in memory.
+	endpointResBody := &bytes.Buffer{}
+	if endpointRes.ContentLength > 0 {
+		endpointResBody.Grow(int(endpointRes.ContentLength))
 	}
+	_, err = io.Copy(endpointResBody, endpointRes.Body)
 	endpointRes.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
+	}
+	endpointRes.Body = io.NopCloser(endpointResBody)
 
-	slog.Debug("sending local application's response to Dispatch API", "request_id", requestID)
+	// Parse the response body from the API.
+	if endpointRes.StatusCode == http.StatusOK && endpointRes.Header.Get("Content-Type") == "application/proto" {
+		var runResponse sdkv1.RunResponse
+		if err := proto.Unmarshal(endpointResBody.Bytes(), &runResponse); err != nil {
+			return fmt.Errorf("invalid response from local application endpoint (%s): %v", LocalEndpoint, err)
+		}
+		switch runResponse.Status {
+		case sdkv1.Status_STATUS_OK:
+			switch d := runResponse.Directive.(type) {
+			case *sdkv1.RunResponse_Exit:
+				if d.Exit.TailCall != nil {
+					slog.Debug("function tail-called", "function", runRequest.Function, "tail_call", d.Exit.TailCall.Function, "request_id", requestID)
+				} else {
+					slog.Debug("function call succeeded", "function", runRequest.Function, "request_id", requestID)
+				}
+			case *sdkv1.RunResponse_Poll:
+				slog.Debug("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls), "request_id", requestID)
+			}
+		default:
+			slog.Debug("function call failed", "function", runRequest.Function, "status", runResponse.Status, "request_id", requestID)
+		}
+	} else {
+		// The response might indicate some other issue, e.g. it could be a 404 if the function can't be found
+		slog.Debug("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode, "request_id", requestID)
+	}
+
+	// Use io.Pipe to convert the response writer into an io.Reader.
+	pr, pw := io.Pipe()
+	go func() {
+		err := endpointRes.Write(pw)
+		pw.CloseWithError(err)
+	}()
+
+	slog.Debug("sending response to Dispatch", "request_id", requestID)
 
 	// Send the response back to the API.
-	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(&bufferedEndpointRes))
+	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(pr))
 	if err != nil {
 		panic(err)
 	}
@@ -302,7 +373,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	}
 	bridgePostRes, err := client.Do(bridgePostReq)
 	if err != nil {
-		return fmt.Errorf("failed to contact Dispatch API: %v", err)
+		return fmt.Errorf("failed to contact Dispatch API or write response: %v", err)
 	}
 	if bridgePostRes.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("failed to contact Dispatch API: response code %d", bridgePostRes.StatusCode)
