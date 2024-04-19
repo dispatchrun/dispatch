@@ -29,6 +29,7 @@ import (
 var (
 	BridgeSession string
 	LocalEndpoint string
+	Verbose       bool
 )
 
 const defaultEndpoint = "127.0.0.1:8000"
@@ -75,6 +76,10 @@ previous run.`, defaultEndpoint),
 			return runConfigFlow()
 		},
 		RunE: func(c *cobra.Command, args []string) error {
+			if Verbose {
+				slog.SetLogLoggerLevel(slog.LevelDebug)
+			}
+
 			if BridgeSession == "" {
 				BridgeSession = uuid.New().String()
 			}
@@ -215,6 +220,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 
 	cmd.Flags().StringVarP(&BridgeSession, "session", "s", "", "Optional session to resume")
 	cmd.Flags().StringVarP(&LocalEndpoint, "endpoint", "e", defaultEndpoint, "Host:port that the local application endpoint is listening on")
+	cmd.Flags().BoolVarP(&Verbose, "verbose", "", false, "Enable verbose logging")
 
 	return cmd
 }
@@ -258,7 +264,7 @@ func poll(ctx context.Context, client *http.Client, url string) (string, *http.R
 }
 
 func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response) error {
-	slog.Debug("sending request from Dispatch API to local application", "endpoint", LocalEndpoint, "request_id", requestID)
+	slog.Debug("sending request from Dispatch to local application", "endpoint", LocalEndpoint, "request_id", requestID)
 
 	// Extract the nested request header/body.
 	endpointReq, err := http.ReadRequest(bufio.NewReader(bridgeGetRes.Body))
@@ -288,6 +294,12 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if err := proto.Unmarshal(endpointReqBody.Bytes(), &runRequest); err != nil {
 		return fmt.Errorf("invalid response from Dispatch API: %v", err)
 	}
+	switch d := runRequest.Directive.(type) {
+	case *sdkv1.RunRequest_Input:
+		slog.Debug("calling function", "function", runRequest.Function, "request_id", requestID)
+	case *sdkv1.RunRequest_PollResult:
+		slog.Debug("resuming function", "function", runRequest.Function, "call_results", len(d.PollResult.Results), "request_id", requestID)
+	}
 
 	// The RequestURI field must be cleared for client.Do() to
 	// accept the request below.
@@ -315,14 +327,29 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	endpointRes.Body = io.NopCloser(endpointResBody)
 
 	// Parse the response body from the API.
-	if endpointRes.Header.Get("Content-Type") == "application/proto" {
+	if endpointRes.StatusCode == http.StatusOK && endpointRes.Header.Get("Content-Type") == "application/proto" {
 		var runResponse sdkv1.RunResponse
 		if err := proto.Unmarshal(endpointResBody.Bytes(), &runResponse); err != nil {
 			return fmt.Errorf("invalid response from local application endpoint (%s): %v", LocalEndpoint, err)
 		}
+		switch runResponse.Status {
+		case sdkv1.Status_STATUS_OK:
+			switch d := runResponse.Directive.(type) {
+			case *sdkv1.RunResponse_Exit:
+				if d.Exit.TailCall != nil {
+					slog.Debug("function tail-called", "function", runRequest.Function, "tail_call", d.Exit.TailCall.Function, "request_id", requestID)
+				} else {
+					slog.Debug("function call succeeded", "function", runRequest.Function, "request_id", requestID)
+				}
+			case *sdkv1.RunResponse_Poll:
+				slog.Debug("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls), "request_id", requestID)
+			}
+		default:
+			slog.Debug("function call failed", "function", runRequest.Function, "status", runResponse.Status, "request_id", requestID)
+		}
 	} else {
-		// TODO: response might indicate some other issue, e.g. it could be a 404 if the function can't be found
-		_ = endpointRes.StatusCode
+		// The response might indicate some other issue, e.g. it could be a 404 if the function can't be found
+		slog.Debug("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode, "request_id", requestID)
 	}
 
 	// Use io.Pipe to convert the response writer into an io.Reader.
@@ -332,7 +359,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		pw.CloseWithError(err)
 	}()
 
-	slog.Debug("sending local application's response to Dispatch API", "request_id", requestID)
+	slog.Debug("sending local application response to Dispatch", "request_id", requestID)
 
 	// Send the response back to the API.
 	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(pr))
