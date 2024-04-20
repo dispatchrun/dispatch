@@ -332,9 +332,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if endpointReq.ContentLength > 0 {
 		endpointReqBody.Grow(int(endpointReq.ContentLength))
 	}
-	_, err = io.Copy(endpointReqBody, endpointReq.Body)
-	bridgeGetRes.Body.Close()
+	endpointReq.ContentLength, err = io.Copy(endpointReqBody, endpointReq.Body)
 	endpointReq.Body.Close()
+	bridgeGetRes.Body.Close()
 	if err != nil {
 		return fmt.Errorf("failed to read response from Dispatch API: %v", err)
 	}
@@ -373,7 +373,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if endpointRes.ContentLength > 0 {
 		endpointResBody.Grow(int(endpointRes.ContentLength))
 	}
-	_, err = io.Copy(endpointResBody, endpointRes.Body)
+	endpointResBody.ContetnLength, err = io.Copy(endpointResBody, endpointRes.Body)
 	endpointRes.Body.Close()
 	if err != nil {
 		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
