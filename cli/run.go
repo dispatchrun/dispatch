@@ -373,12 +373,13 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if endpointRes.ContentLength > 0 {
 		endpointResBody.Grow(int(endpointRes.ContentLength))
 	}
-	endpointResBody.ContetnLength, err = io.Copy(endpointResBody, endpointRes.Body)
+	_, err = io.Copy(endpointResBody, endpointRes.Body)
 	endpointRes.Body.Close()
 	if err != nil {
 		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
 	}
 	endpointRes.Body = io.NopCloser(endpointResBody)
+	endpointRes.ContentLength = int64(endpointResBody.Len())
 
 	// Parse the response body from the API.
 	if endpointRes.StatusCode == http.StatusOK && endpointRes.Header.Get("Content-Type") == "application/proto" {
