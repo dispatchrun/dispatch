@@ -493,9 +493,9 @@ func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {
 
 	for scanner.Scan() {
 		buffer.Truncate(len(prefix))
-		_, _ = buffer.Write(scanner.Bytes())
-		_, _ = buffer.Write(suffix)
-		w.Write(buffer.Bytes())
+		buffer.Write(scanner.Bytes())
+		buffer.Write(suffix)
+		_, _ = w.Write(buffer.Bytes())
 	}
 }
 
