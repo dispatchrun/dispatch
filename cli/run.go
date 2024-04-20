@@ -332,9 +332,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if endpointReq.ContentLength > 0 {
 		endpointReqBody.Grow(int(endpointReq.ContentLength))
 	}
-	_, err = io.Copy(endpointReqBody, endpointReq.Body)
-	bridgeGetRes.Body.Close()
+	endpointReq.ContentLength, err = io.Copy(endpointReqBody, endpointReq.Body)
 	endpointReq.Body.Close()
+	bridgeGetRes.Body.Close()
 	if err != nil {
 		return fmt.Errorf("failed to read response from Dispatch API: %v", err)
 	}
@@ -379,6 +379,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
 	}
 	endpointRes.Body = io.NopCloser(endpointResBody)
+	endpointRes.ContentLength = int64(endpointResBody.Len())
 
 	// Parse the response body from the API.
 	if endpointRes.StatusCode == http.StatusOK && endpointRes.Header.Get("Content-Type") == "application/proto" {
