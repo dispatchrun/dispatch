@@ -151,6 +151,8 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
+			var observer = &TUI{}
+
 			var wg sync.WaitGroup
 
 			// Setup signal handler.
@@ -212,7 +214,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					go func() {
 						defer wg.Done()
 
-						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res)
+						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res, observer)
 						res.Body.Close()
 						if err != nil {
 							if ctx.Err() == nil {
@@ -317,7 +319,28 @@ func poll(ctx context.Context, client *http.Client, url string) (string, *http.R
 	return requestID, res, nil
 }
 
-func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response) error {
+// FunctionCallObserver observes function call requests and responses.
+//
+// The observer may be invoked concurrently from many goroutines.
+type FunctionCallObserver interface {
+	// ObserveRequest observes a RunRequest as it passes from the API through
+	// the CLI to the local application.
+	ObserveRequest(*sdkv1.RunRequest)
+
+	// ObserveResponse observes a response to the RunRequest.
+	//
+	// If the RunResponse is nil, it means the local application did not return
+	// a valid response. If the http.Response is not nil, it means an HTTP
+	// response was generated, but it wasn't a valid RunResponse. The error may
+	// be present if there was either an error making the HTTP request, or parsing
+	// the response.
+	//
+	// ObserveResponse always comes after a call to ObserveRequest for any given
+	// RunRequest.
+	ObserveResponse(*sdkv1.RunRequest, error, *http.Response, *sdkv1.RunResponse)
+}
+
+func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response, observer FunctionCallObserver) error {
 	slog.Debug("sending request to local application", "endpoint", LocalEndpoint, "request_id", requestID)
 
 	// Extract the nested request header/body.
@@ -354,6 +377,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	case *sdkv1.RunRequest_PollResult:
 		slog.Debug("resuming function", "function", runRequest.Function, "call_results", len(d.PollResult.Results), "request_id", requestID)
 	}
+	if observer != nil {
+		observer.ObserveRequest(&runRequest)
+	}
 
 	// The RequestURI field must be cleared for client.Do() to
 	// accept the request below.
@@ -365,6 +391,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	endpointReq.URL.Host = LocalEndpoint
 	endpointRes, err := client.Do(endpointReq)
 	if err != nil {
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, err, nil, nil)
+		}
 		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
 	}
 
@@ -376,6 +405,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	_, err = io.Copy(endpointResBody, endpointRes.Body)
 	endpointRes.Body.Close()
 	if err != nil {
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, err, endpointRes, nil)
+		}
 		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
 	}
 	endpointRes.Body = io.NopCloser(endpointResBody)
@@ -385,6 +417,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if endpointRes.StatusCode == http.StatusOK && endpointRes.Header.Get("Content-Type") == "application/proto" {
 		var runResponse sdkv1.RunResponse
 		if err := proto.Unmarshal(endpointResBody.Bytes(), &runResponse); err != nil {
+			if observer != nil {
+				observer.ObserveResponse(&runRequest, err, endpointRes, nil)
+			}
 			return fmt.Errorf("invalid response from local application endpoint (%s): %v", LocalEndpoint, err)
 		}
 		switch runResponse.Status {
@@ -402,9 +437,15 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		default:
 			slog.Debug("function call failed", "function", runRequest.Function, "status", runResponse.Status, "request_id", requestID)
 		}
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, nil, endpointRes, &runResponse)
+		}
 	} else {
 		// The response might indicate some other issue, e.g. it could be a 404 if the function can't be found
 		slog.Debug("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode, "request_id", requestID)
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, nil, endpointRes, nil)
+		}
 	}
 
 	// Use io.Pipe to convert the response writer into an io.Reader.
