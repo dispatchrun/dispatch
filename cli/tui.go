@@ -8,7 +8,25 @@ import (
 	"time"
 
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	grayColor = lipgloss.Color("#7D7D7D")
+
+	redColor    = lipgloss.Color("#FF0000")
+	greenColor  = lipgloss.Color("#00FF00")
+	yellowColor = lipgloss.Color("#FFAA00")
+
+	pendingStyle = lipgloss.NewStyle().Foreground(grayColor)
+	retryStyle   = lipgloss.NewStyle().Foreground(yellowColor)
+	errorStyle   = lipgloss.NewStyle().Foreground(redColor)
+	okStyle      = lipgloss.NewStyle().Foreground(greenColor)
+
+	errorCauseStyle = lipgloss.NewStyle().Foreground(grayColor)
+	spinnerStyle    = lipgloss.NewStyle().Foreground(grayColor)
 )
 
 type DispatchID string
@@ -18,6 +36,8 @@ type TUI struct {
 
 	roots map[DispatchID]struct{}
 	nodes map[DispatchID]node
+
+	spinner spinner.Model
 }
 
 type node struct {
@@ -42,13 +62,18 @@ func tick() tea.Cmd {
 }
 
 func (t *TUI) Init() tea.Cmd {
-	return tick()
+	t.spinner = spinner.New()
+	return tea.Batch(t.spinner.Tick, tick())
 }
 
 func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tickMsg:
 		return t, tick()
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		t.spinner, cmd = t.spinner.Update(msg)
+		return t, cmd
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
@@ -125,17 +150,16 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	n := t.nodes[id]
 
 	if res != nil {
+		n.status = res.Status
 		if res.Status != sdkv1.Status_STATUS_OK {
 			n.failures++
 		}
-		n.done = terminalStatus(res.Status)
-
 		if res.Status == sdkv1.Status_STATUS_INCOMPATIBLE_STATE {
-			// TODO: wipe state
+			// TODO: wipe state?
 		}
-
 		switch d := res.Directive.(type) {
 		case *sdkv1.RunResponse_Exit:
+			n.done = terminalStatus(res.Status)
 			if d.Exit.TailCall != nil {
 				n = node{function: d.Exit.TailCall.Function} // reset
 			} else {
@@ -149,7 +173,6 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 				n.calls[call.Function]++
 			}
 		}
-
 	} else if httpRes != nil {
 		n.failures++
 		n.error = fmt.Errorf("unexpected HTTP status code %d", httpRes.StatusCode)
@@ -175,7 +198,7 @@ func (t *TUI) render() string {
 	var i int
 	for rootID := range t.roots {
 		if i > 0 {
-			b.Write([]byte("\n\n"))
+			b.WriteByte('\n')
 		}
 		t.renderTo(rootID, 0, &b)
 		i++
@@ -196,23 +219,36 @@ func (t *TUI) renderTo(id DispatchID, indent int, b *strings.Builder) {
 	for i := 0; i < indent; i++ {
 		b.WriteByte(' ')
 	}
-	b.WriteString(function)
 
-	// FIXME
-	if n.done || n.failures > 0 {
-		if n.done {
-			b.WriteString(" done")
-		}
-		if n.failures > 0 {
-			b.WriteString(" failures>0")
-		}
-		if n.error != nil {
-			b.WriteString(" error")
+	// TODO: show function call arguments?
+
+	if n.done {
+		if n.status == sdkv1.Status_STATUS_OK {
+			b.WriteString(okStyle.Render(function))
 		} else {
-			b.WriteString(" status")
+			b.WriteString(errorStyle.Render(function))
+			if n.error != nil {
+				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.error.Error())))
+			} else {
+				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.status)))
+			}
 		}
 	} else {
-		b.WriteString(" pending")
+		style := pendingStyle
+		if n.failures > 0 {
+			style = retryStyle
+		}
+		b.WriteString(style.Render(function))
+
+		if n.failures > 0 {
+			if n.error != nil {
+				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.error.Error())))
+			} else {
+				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.status)))
+			}
+		}
+		b.WriteByte(' ')
+		b.WriteString(spinnerStyle.Render(t.spinner.View()))
 	}
 
 	b.WriteByte('\n')
@@ -227,8 +263,9 @@ func (t *TUI) renderTo(id DispatchID, indent int, b *strings.Builder) {
 			for i := 0; i < childIndent; i++ {
 				b.WriteByte(' ')
 			}
-			b.WriteString(function)
-			b.WriteString(" pending call")
+			b.WriteString(pendingStyle.Render(function))
+			b.WriteByte(' ')
+			b.WriteString(spinnerStyle.Render(t.spinner.View()))
 			b.WriteByte('\n')
 		}
 	}
