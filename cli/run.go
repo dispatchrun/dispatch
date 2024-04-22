@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
@@ -81,7 +83,11 @@ previous run.`, defaultEndpoint),
 
 			prefixWidth := max(len("dispatch"), len(arg0))
 
-			if Verbose {
+			tui := &TUI{}
+
+			if tui != nil {
+				slog.SetLogLoggerLevel(slog.LevelError + 1) // disable for now
+			} else if Verbose {
 				prefix := []byte(pad("dispatch", prefixWidth) + " | ")
 				if Color {
 					prefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
@@ -98,7 +104,9 @@ previous run.`, defaultEndpoint),
 				BridgeSession = uuid.New().String()
 			}
 
-			if Verbose {
+			if tui != nil {
+				// no init message for now
+			} else if Verbose {
 				slog.Info("starting session", "session_id", BridgeSession)
 			} else {
 				dialog(`Starting Dispatch session: %v
@@ -117,7 +125,10 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			// to disambiguate Dispatch logs from the local application's logs.
 			var stdout io.ReadCloser
 			var stderr io.ReadCloser
-			if Verbose {
+			if tui != nil {
+				cmd.Stdout = nil
+				cmd.Stderr = nil
+			} else if Verbose {
 				var err error
 				stdout, err = cmd.StdoutPipe()
 				if err != nil {
@@ -151,8 +162,6 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			var observer = &TUI{}
-
 			var wg sync.WaitGroup
 
 			// Setup signal handler.
@@ -175,6 +184,21 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 							_ = cmd.Process.Kill()
 						}
 					}
+				}
+			}()
+
+			// Initialize the TUI.
+			p := tea.NewProgram(tui, tea.WithoutSignalHandler(), tea.WithContext(ctx), tea.WithoutCatchPanics())
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				if _, err := p.Run(); err != nil && !errors.Is(err, tea.ErrProgramKilled) {
+					panic(err)
+				}
+				// Quitting the TUI sends an implicit interrupt.
+				select {
+				case signals <- syscall.SIGINT:
 				}
 			}()
 
@@ -214,7 +238,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					go func() {
 						defer wg.Done()
 
-						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res, observer)
+						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res, tui)
 						res.Body.Close()
 						if err != nil {
 							if ctx.Err() == nil {
@@ -239,7 +263,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
 			}
 
-			if Verbose {
+			if tui == nil && Verbose {
 				prefix := []byte(pad(arg0, prefixWidth) + " | ")
 				suffix := []byte("\n")
 				if Color {
@@ -261,7 +285,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			if signaled {
 				err = nil
 
-				if atomic.LoadInt64(&successfulPolls) > 0 && !Verbose {
+				if atomic.LoadInt64(&successfulPolls) > 0 && !Verbose && tui == nil {
 					dialog("To resume this Dispatch session:\n\n\tdispatch run --session %s -- %s",
 						BridgeSession, strings.Join(args, " "))
 				}

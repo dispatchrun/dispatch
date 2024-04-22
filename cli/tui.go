@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type DispatchID string
@@ -27,6 +29,37 @@ type node struct {
 
 	calls    map[string]int
 	children map[DispatchID]struct{}
+}
+
+var _ tea.Model = (*TUI)(nil)
+
+type tickMsg struct{}
+
+func tick() tea.Cmd {
+	return tea.Tick(time.Second/10, func(time.Time) tea.Msg {
+		return tickMsg{}
+	})
+}
+
+func (t *TUI) Init() tea.Cmd {
+	return tick()
+}
+
+func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tickMsg:
+		return t, tick()
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return t, tea.Quit
+		}
+	}
+	return t, nil
+}
+
+func (t *TUI) View() string {
+	return t.render()
 }
 
 func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
@@ -82,8 +115,6 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 		}
 		t.nodes[parentID] = parent
 	}
-
-	t.render()
 }
 
 func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Response, res *sdkv1.RunResponse) {
@@ -129,8 +160,6 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	}
 
 	t.nodes[id] = n
-
-	t.render()
 }
 
 func (t *TUI) parseID(id string) DispatchID {
@@ -138,8 +167,9 @@ func (t *TUI) parseID(id string) DispatchID {
 	return DispatchID(id)
 }
 
-func (t *TUI) render() {
-	// t.mu must be locked.
+func (t *TUI) render() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
 	var b strings.Builder
 	var i int
@@ -151,7 +181,7 @@ func (t *TUI) render() {
 		i++
 	}
 
-	fmt.Print(b.String())
+	return b.String()
 }
 
 func (t *TUI) renderTo(id DispatchID, indent int, b *strings.Builder) {
