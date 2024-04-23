@@ -130,8 +130,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.spinner, cmd = t.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 	case tea.WindowSizeMsg:
-		height := msg.Height
-		width := msg.Width - 1 // reserve space for help
+		height := msg.Height - 1 // reserve space for help
+		width := msg.Width
 		if !t.ready {
 			t.viewport = viewport.New(width, height)
 			t.ready = true
