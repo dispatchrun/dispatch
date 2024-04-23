@@ -96,11 +96,12 @@ previous run.`, defaultEndpoint),
 				if Color {
 					prefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
 				}
-				slog.SetDefault(slog.New(&prefixHandler{
-					Handler: slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelDebug}),
-					stream:  logWriter,
-					prefix:  prefix,
-				}))
+				slog.SetDefault(slog.New(
+					slog.NewTextHandler(&prefixLogWriter{
+						stream: logWriter,
+						prefix: prefix,
+					}, &slog.HandlerOptions{Level: slog.LevelDebug}),
+				))
 			}
 
 			if BridgeSession == "" {
@@ -554,22 +555,20 @@ func withoutEnv(env []string, prefixes ...string) []string {
 	})
 }
 
-type prefixHandler struct {
-	slog.Handler
+type prefixLogWriter struct {
 	stream io.Writer
 	prefix []byte
-	suffix []byte
 }
 
-func (h *prefixHandler) Handle(ctx context.Context, r slog.Record) error {
-	if _, err := h.stream.Write(h.prefix); err != nil {
-		return err
+func (p *prefixLogWriter) Write(b []byte) (int, error) {
+	var buffer bytes.Buffer
+	if _, err := buffer.Write(p.prefix); err != nil {
+		return 0, err
 	}
-	if err := h.Handler.Handle(ctx, r); err != nil {
-		return err
+	if _, err := buffer.Write(b); err != nil {
+		return 0, err
 	}
-	_, err := h.stream.Write(h.suffix)
-	return err
+	return p.stream.Write(buffer.Bytes())
 }
 
 func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {
