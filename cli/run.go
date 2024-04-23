@@ -290,7 +290,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			if signaled {
 				err = nil
 
-				if atomic.LoadInt64(&successfulPolls) > 0 && !Verbose && tui == nil {
+				if atomic.LoadInt64(&successfulPolls) > 0 && !Verbose {
 					dialog("To resume this Dispatch session:\n\n\tdispatch run --session %s -- %s",
 						BridgeSession, strings.Join(args, " "))
 				}
