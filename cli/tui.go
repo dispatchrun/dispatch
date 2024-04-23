@@ -55,6 +55,7 @@ type TUI struct {
 
 	keys      []key.Binding
 	activeTab tab
+	tail      bool
 
 	logs   bytes.Buffer
 	logsMu sync.Mutex
@@ -104,11 +105,16 @@ func (t *TUI) Init() tea.Cmd {
 			key.WithHelp("tab", "switch tabs"),
 		),
 		key.NewBinding(
+			key.WithKeys("t"),
+			key.WithHelp("t", "tail"),
+		),
+		key.NewBinding(
 			key.WithKeys("q", "ctrl+c", "esc"),
 			key.WithHelp("q", "quit"),
 		),
 	}
 
+	t.tail = true
 	t.activeTab = functionsTab
 
 	return tea.Batch(t.spinner.Tick, tick())
@@ -137,8 +143,16 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return t, tea.Quit
+		case "t":
+			t.tail = true
 		case "tab":
 			t.activeTab = (t.activeTab + 1) % tabCount
+		case "up", "down", "left", "right", "pgup", "pgdown", "ctrl+u", "ctrl+d":
+			t.tail = false
+		}
+	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress && (msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown) {
+			t.tail = false
 		}
 	}
 	t.viewport, cmd = t.viewport.Update(msg)
@@ -173,9 +187,10 @@ func (t *TUI) View() string {
 		t.viewport.SetContent(t.logs.String())
 	}
 
-	// TODO: how should we handle scrollback? The viewport supports it, but we also
-	//  want to follow the output if the user hasn't explicitly scrolled back..
-	t.viewport.GotoBottom()
+	// Tail the output, unless the user has tried to scroll back.
+	if t.tail {
+		t.viewport.GotoBottom()
+	}
 
 	return t.viewport.View() + "\n" + t.help.ShortHelpView(t.keys)
 }
