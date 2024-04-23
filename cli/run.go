@@ -107,9 +107,7 @@ previous run.`, defaultEndpoint),
 				BridgeSession = uuid.New().String()
 			}
 
-			if tui != nil {
-				// no init message for now
-			} else if Verbose {
+			if Verbose || tui != nil {
 				slog.Info("starting session", "session_id", BridgeSession)
 			} else {
 				dialog(`Starting Dispatch session: %v
