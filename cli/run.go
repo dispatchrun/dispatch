@@ -268,7 +268,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
 			}
 
-			if tui == nil && Verbose {
+			if Verbose || tui != nil {
 				prefix := []byte(pad(arg0, prefixWidth) + " | ")
 				suffix := []byte("\n")
 				if Color {
