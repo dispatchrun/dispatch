@@ -25,8 +25,10 @@ var (
 	errorStyle   = lipgloss.NewStyle().Foreground(redColor)
 	okStyle      = lipgloss.NewStyle().Foreground(greenColor)
 
-	errorCauseStyle = lipgloss.NewStyle().Foreground(grayColor)
-	spinnerStyle    = lipgloss.NewStyle().Foreground(grayColor)
+	argumentStyle = lipgloss.NewStyle().Foreground(grayColor)
+	spinnerStyle  = lipgloss.NewStyle().Foreground(grayColor)
+	statusStyle   = lipgloss.NewStyle().Foreground(grayColor)
+	treeStyle     = lipgloss.NewStyle().Foreground(grayColor)
 )
 
 type DispatchID string
@@ -34,7 +36,9 @@ type DispatchID string
 type TUI struct {
 	mu sync.Mutex
 
-	roots map[DispatchID]struct{}
+	roots        map[DispatchID]struct{}
+	orderedRoots []DispatchID
+
 	nodes map[DispatchID]node
 
 	spinner spinner.Model
@@ -47,8 +51,12 @@ type node struct {
 	error    error
 	done     bool
 
-	calls    map[string]int
-	children map[DispatchID]struct{}
+	calls            map[string]int
+	orderedCalls     []string
+	outstandingCalls int
+
+	children        map[DispatchID]struct{}
+	orderedChildren []DispatchID
 }
 
 var _ tea.Model = (*TUI)(nil)
@@ -103,14 +111,15 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 	id := t.parseID(req.DispatchId)
 
 	// Upsert the root.
-	t.roots[rootID] = struct{}{}
+	if _, ok := t.roots[rootID]; !ok {
+		t.roots[rootID] = struct{}{}
+		t.orderedRoots = append(t.orderedRoots, rootID)
+	}
 	root, ok := t.nodes[rootID]
 	if !ok {
 		root = node{}
 	}
 	t.nodes[rootID] = root
-
-	// TODO: setup expiry for the root
 
 	// Upsert the node.
 	n, ok := t.nodes[id]
@@ -118,6 +127,8 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 		n = node{}
 	}
 	n.function = req.Function
+	n.error = nil // clear previous error
+	n.status = 0  // clear previous status
 	t.nodes[id] = n
 
 	// Upsert the parent and link its child, if applicable.
@@ -135,8 +146,10 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 		if _, ok := parent.children[id]; !ok {
 			if n, ok := parent.calls[req.Function]; ok && n > 0 {
 				parent.calls[req.Function] = n - 1
+				parent.outstandingCalls--
 			}
 			parent.children[id] = struct{}{}
+			parent.orderedChildren = append(parent.orderedChildren, id)
 		}
 		t.nodes[parentID] = parent
 	}
@@ -150,7 +163,6 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	n := t.nodes[id]
 
 	if res != nil {
-		n.status = res.Status
 		if res.Status != sdkv1.Status_STATUS_OK {
 			n.failures++
 		}
@@ -159,6 +171,7 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 		}
 		switch d := res.Directive.(type) {
 		case *sdkv1.RunResponse_Exit:
+			n.status = res.Status
 			n.done = terminalStatus(res.Status)
 			if d.Exit.TailCall != nil {
 				n = node{function: d.Exit.TailCall.Function} // reset
@@ -171,6 +184,7 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 			}
 			for _, call := range d.Poll.Calls {
 				n.calls[call.Function]++
+				n.outstandingCalls++
 			}
 		}
 	} else if httpRes != nil {
@@ -194,80 +208,146 @@ func (t *TUI) render() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	if len(t.roots) == 0 {
+		return statusStyle.Render("Waiting for function calls...")
+	}
+
 	var b strings.Builder
 	var i int
-	for rootID := range t.roots {
+	for _, rootID := range t.orderedRoots {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		t.renderTo(rootID, 0, &b)
+		t.renderTo(rootID, nil, &b)
 		i++
 	}
 
 	return b.String()
 }
 
-func (t *TUI) renderTo(id DispatchID, indent int, b *strings.Builder) {
+func (t *TUI) renderTo(id DispatchID, isLast []bool, b *strings.Builder) {
 	// t.mu must be locked.
-
 	n := t.nodes[id]
 
-	function := "(?)"
-	if n.function != "" {
-		function = n.function
-	}
-	for i := 0; i < indent; i++ {
+	// Print the tree prefix.
+	for i, last := range isLast {
+		var s string
+		if i == len(isLast)-1 {
+			if last {
+				s = "└─"
+			} else {
+				s = "├─"
+			}
+		} else {
+			if last {
+				s = "  "
+			} else {
+				s = "│ "
+			}
+		}
+		b.WriteString(treeStyle.Render(s))
 		b.WriteByte(' ')
 	}
 
-	// TODO: show function call arguments?
-
+	// Determine what to print, based on the status of the function call.
+	var functionStyle lipgloss.Style
+	var errorCauseStyle lipgloss.Style
+	showError := false
+	showSpinner := false
 	if n.done {
 		if n.status == sdkv1.Status_STATUS_OK {
-			b.WriteString(okStyle.Render(function))
+			functionStyle = okStyle
 		} else {
-			b.WriteString(errorStyle.Render(function))
-			if n.error != nil {
-				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.error.Error())))
-			} else {
-				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.status)))
-			}
+			functionStyle = errorStyle
+			errorCauseStyle = errorStyle
+			showError = true
 		}
 	} else {
-		style := pendingStyle
+		functionStyle = pendingStyle
 		if n.failures > 0 {
-			style = retryStyle
+			functionStyle = retryStyle
+			errorCauseStyle = retryStyle
+			showError = true
 		}
-		b.WriteString(style.Render(function))
+		showSpinner = true
+	}
 
-		if n.failures > 0 {
-			if n.error != nil {
-				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.error.Error())))
-			} else {
-				b.WriteString(errorCauseStyle.Render(fmt.Sprintf(" (%s)", n.status)))
-			}
+	// Render the function call.
+	if n.function != "" {
+		b.WriteString(functionStyle.Render(n.function))
+	} else {
+		b.WriteString(functionStyle.Render("<?>"))
+	}
+	b.WriteString(argumentStyle.Render("()")) // TODO: parse/show arguments?
+	if showError && (n.error != nil || n.status != sdkv1.Status_STATUS_UNSPECIFIED) {
+		b.WriteByte(' ')
+		if n.error != nil {
+			b.WriteString(errorCauseStyle.Render(n.error.Error()))
+		} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
+			b.WriteString(errorCauseStyle.Render(statusString(n.status)))
 		}
+	}
+	if showSpinner {
 		b.WriteByte(' ')
 		b.WriteString(spinnerStyle.Render(t.spinner.View()))
 	}
-
 	b.WriteByte('\n')
 
-	childIndent := indent + 2
-	for id := range n.children {
-		t.renderTo(id, childIndent, b)
+	// Recursively render children.
+	for i, id := range n.orderedChildren {
+		last := i == len(n.orderedChildren)-1
+		t.renderTo(id, append(isLast[:len(isLast):len(isLast)], last), b)
 	}
 
-	for function, count := range n.calls {
-		for i := 0; i < count; i++ {
-			for i := 0; i < childIndent; i++ {
-				b.WriteByte(' ')
-			}
-			b.WriteString(pendingStyle.Render(function))
-			b.WriteByte(' ')
-			b.WriteString(spinnerStyle.Render(t.spinner.View()))
-			b.WriteByte('\n')
-		}
+	// FIXME: hard to render calls before we know the Dispatch ID..
+	//  We either need correlation ID on RunRequest, or dispatch_ids on
+	//  PollResult after making calls
+	//
+	// for function, count := range n.calls {
+	// 	for i := 0; i < count; i++ {
+	// 		for i := 0; i < childIndent; i++ {
+	// 			b.WriteByte(' ')
+	// 		}
+	// 		b.WriteString(pendingStyle.Render(function))
+	// 		b.WriteByte(' ')
+	// 		b.WriteString(spinnerStyle.Render(t.spinner.View()))
+	// 		b.WriteByte('\n')
+	// 	}
+	// }
+}
+
+func statusString(status sdkv1.Status) string {
+	switch status {
+	case sdkv1.Status_STATUS_OK:
+		return "ok"
+	case sdkv1.Status_STATUS_TIMEOUT:
+		return "timeout"
+	case sdkv1.Status_STATUS_THROTTLED:
+		return "throttled"
+	case sdkv1.Status_STATUS_INVALID_ARGUMENT:
+		return "invalid response"
+	case sdkv1.Status_STATUS_TEMPORARY_ERROR:
+		return "temporary error"
+	case sdkv1.Status_STATUS_PERMANENT_ERROR:
+		return "permanent error"
+	case sdkv1.Status_STATUS_INCOMPATIBLE_STATE:
+		return "incompatible state"
+	case sdkv1.Status_STATUS_DNS_ERROR:
+		return "DNS error"
+	case sdkv1.Status_STATUS_TCP_ERROR:
+		return "TCP error"
+	case sdkv1.Status_STATUS_TLS_ERROR:
+		return "TLS error"
+	case sdkv1.Status_STATUS_HTTP_ERROR:
+		return "HTTP error"
+	case sdkv1.Status_STATUS_UNAUTHENTICATED:
+		return "unauthenticated"
+	case sdkv1.Status_STATUS_PERMISSION_DENIED:
+		return "permission denied"
+	case sdkv1.Status_STATUS_NOT_FOUND:
+		return "not found"
+	default:
+		return status.String()
 	}
 }
 
