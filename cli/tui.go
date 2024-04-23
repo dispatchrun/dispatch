@@ -29,10 +29,9 @@ var (
 	errorStyle   = lipgloss.NewStyle().Foreground(redColor)
 	okStyle      = lipgloss.NewStyle().Foreground(greenColor)
 
-	argumentStyle = lipgloss.NewStyle().Foreground(grayColor)
-	spinnerStyle  = lipgloss.NewStyle().Foreground(grayColor)
-	statusStyle   = lipgloss.NewStyle().Foreground(grayColor)
-	treeStyle     = lipgloss.NewStyle().Foreground(grayColor)
+	spinnerStyle = lipgloss.NewStyle().Foreground(grayColor)
+	statusStyle  = lipgloss.NewStyle().Foreground(grayColor)
+	treeStyle    = lipgloss.NewStyle().Foreground(grayColor)
 
 	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
 	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
@@ -382,14 +381,15 @@ func (t *TUI) renderTo(id DispatchID, isLast []bool, b *strings.Builder) {
 	} else {
 		b.WriteString(functionStyle.Render("<?>"))
 	}
-	b.WriteString(argumentStyle.Render("()")) // TODO: parse/show arguments?
+	// TODO: parse/show arguments?
 	if showError && (n.error != nil || n.status != sdkv1.Status_STATUS_UNSPECIFIED) {
-		b.WriteByte(' ')
+		b.WriteString(statusStyle.Render(" ("))
 		if n.error != nil {
 			b.WriteString(errorCauseStyle.Render(n.error.Error()))
 		} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
 			b.WriteString(errorCauseStyle.Render(statusString(n.status)))
 		}
+		b.WriteString(statusStyle.Render(")"))
 	}
 	if showSpinner {
 		b.WriteByte(' ')
