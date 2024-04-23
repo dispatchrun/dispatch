@@ -9,6 +9,7 @@ import (
 
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -41,7 +42,9 @@ type TUI struct {
 
 	nodes map[DispatchID]node
 
-	spinner spinner.Model
+	spinner  spinner.Model
+	viewport viewport.Model
+	ready    bool
 }
 
 type node struct {
@@ -75,24 +78,39 @@ func (t *TUI) Init() tea.Cmd {
 }
 
 func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tickMsg:
-		return t, tick()
+		cmds = append(cmds, tick())
 	case spinner.TickMsg:
-		var cmd tea.Cmd
 		t.spinner, cmd = t.spinner.Update(msg)
-		return t, cmd
+		cmds = append(cmds, cmd)
+	case tea.WindowSizeMsg:
+		if !t.ready {
+			t.viewport = viewport.New(msg.Width, msg.Height)
+			t.ready = true
+		} else {
+			t.viewport.Width = msg.Width
+			t.viewport.Height = msg.Height
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return t, tea.Quit
 		}
 	}
-	return t, nil
+	t.viewport, cmd = t.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+	return t, tea.Batch(cmds...)
 }
 
 func (t *TUI) View() string {
-	return t.render()
+	if !t.ready {
+		return statusStyle.Render("Initializing...")
+	}
+	t.viewport.SetContent(t.render())
+	return t.viewport.View()
 }
 
 func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {

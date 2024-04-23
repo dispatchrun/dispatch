@@ -188,7 +188,11 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			}()
 
 			// Initialize the TUI.
-			p := tea.NewProgram(tui, tea.WithoutSignalHandler(), tea.WithContext(ctx), tea.WithoutCatchPanics())
+			p := tea.NewProgram(tui,
+				tea.WithContext(ctx),
+				tea.WithoutSignalHandler(),
+				tea.WithoutCatchPanics(),
+				tea.WithMouseCellMotion())
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
