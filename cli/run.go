@@ -82,9 +82,10 @@ previous run.`, defaultEndpoint),
 
 			prefixWidth := max(len("dispatch"), len(arg0))
 
-			// Enable the TUI if this is an interactive session.
+			// Enable the TUI if this is an interactive session and
+			// stdout/stderr aren't redirected.
 			var tui *TUI
-			if isTerminal(os.Stdin) {
+			if isTerminal(os.Stdin) && isTerminal(os.Stdout) && isTerminal(os.Stderr) {
 				tui = &TUI{}
 			}
 
@@ -191,24 +192,26 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			}()
 
 			// Initialize the TUI.
-			p := tea.NewProgram(tui,
-				tea.WithContext(ctx),
-				tea.WithoutSignalHandler(),
-				tea.WithoutCatchPanics(),
-				tea.WithMouseCellMotion())
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			if tui != nil {
+				p := tea.NewProgram(tui,
+					tea.WithContext(ctx),
+					tea.WithoutSignalHandler(),
+					tea.WithoutCatchPanics(),
+					tea.WithMouseCellMotion())
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
 
-				if _, err := p.Run(); err != nil && !errors.Is(err, tea.ErrProgramKilled) {
-					panic(err)
-				}
-				// Quitting the TUI sends an implicit interrupt.
-				select {
-				case signals <- syscall.SIGINT:
-				default:
-				}
-			}()
+					if _, err := p.Run(); err != nil && !errors.Is(err, tea.ErrProgramKilled) {
+						panic(err)
+					}
+					// Quitting the TUI sends an implicit interrupt.
+					select {
+					case signals <- syscall.SIGINT:
+					default:
+					}
+				}()
+			}
 
 			bridgeSessionURL := fmt.Sprintf("%s/sessions/%s", DispatchBridgeUrl, BridgeSession)
 
