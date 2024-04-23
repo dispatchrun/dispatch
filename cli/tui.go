@@ -132,11 +132,11 @@ var dispatchAscii = []string{
 	logoStyle.Render("   /\\ \\  __                          /\\ \\__       /\\ \\                   "),
 	logoStyle.Render("   \\_\\ \\/\\_\\    ____  _____      __  \\ \\ ,_\\   ___\\ \\ \\___               "),
 	logoStyle.Render("   /'_` \\/\\ \\  /',__\\/\\ '__`\\  /'__`\\ \\ \\ \\/  /'___\\ \\  _ `\\             "),
-	logoStyle.Render("  /\\ \\L\\ \\ \\ \\/\\__, `\\ \\ \\L\\ \\/\\ \\L\\.\\_\\ \\ \\_/\\ \\__/\\ \\ \\ \\ \\            "),
-	logoStyle.Render("  \\ \\___,_\\ \\_\\/\\____/\\ \\ ,__/\\ \\__/.\\_\\\\ \\__\\ \\____\\\\ \\_\\ \\_\\"),
-	logoStyle.Render("   \\/__,_ /\\/_/\\/___/  \\ \\ \\/  \\/__/\\/_/ \\/__/\\/____/ \\/_/\\/_/ ") + logoUnderscoreStyle.Render("  _______ "),
-	logoStyle.Render("                        \\ \\_\\                                  ") + logoUnderscoreStyle.Render(" /\\______\\"),
-	logoStyle.Render("                         \\/_/                                  ") + logoUnderscoreStyle.Render(" \\/______/"),
+	logoStyle.Render("  /\\ \\L\\ \\ \\ \\/\\__, `\\ \\ \\L\\ \\/\\ \\L\\.\\_\\ \\ \\_/\\ \\__/\\ \\ \\ \\ \\") + logoUnderscoreStyle.Render("  _______ "),
+	logoStyle.Render("  \\ \\___,_\\ \\_\\/\\____/\\ \\ ,__/\\ \\__/.\\_\\\\ \\__\\ \\____\\\\ \\_\\ \\_\\") + logoUnderscoreStyle.Render("/\\______\\"),
+	logoStyle.Render("   \\/__,_ /\\/_/\\/___/  \\ \\ \\/  \\/__/\\/_/ \\/__/\\/____/ \\/_/\\/_/") + logoUnderscoreStyle.Render("\\/______/"),
+	logoStyle.Render("                        \\ \\_\\                                  "),
+	logoStyle.Render("                         \\/_/                                  "),
 	"",
 }
 
