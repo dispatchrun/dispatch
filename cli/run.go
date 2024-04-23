@@ -21,12 +21,11 @@ import (
 	"syscall"
 	"time"
 
+	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
-
-	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 )
 
 var (
@@ -83,7 +82,11 @@ previous run.`, defaultEndpoint),
 
 			prefixWidth := max(len("dispatch"), len(arg0))
 
-			tui := &TUI{}
+			// Enable the TUI if this is an interactive session.
+			var tui *TUI
+			if isTerminal(os.Stdin) {
+				tui = &TUI{}
+			}
 
 			if tui != nil {
 				slog.SetLogLoggerLevel(slog.LevelError + 1) // disable for now
@@ -203,6 +206,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				// Quitting the TUI sends an implicit interrupt.
 				select {
 				case signals <- syscall.SIGINT:
+				default:
 				}
 			}()
 

@@ -55,7 +55,6 @@ type node struct {
 	done     bool
 
 	calls            map[string]int
-	orderedCalls     []string
 	outstandingCalls int
 
 	children        map[DispatchID]struct{}
@@ -184,18 +183,15 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 		if res.Status != sdkv1.Status_STATUS_OK {
 			n.failures++
 		}
-		if res.Status == sdkv1.Status_STATUS_INCOMPATIBLE_STATE {
-			// TODO: wipe state?
-		}
+		// TODO: wipe in-memory state if INCOMPATIBLE_STATE status is observed?
 		switch d := res.Directive.(type) {
 		case *sdkv1.RunResponse_Exit:
 			n.status = res.Status
 			n.done = terminalStatus(res.Status)
 			if d.Exit.TailCall != nil {
 				n = node{function: d.Exit.TailCall.Function} // reset
-			} else {
-				// TODO: show result?
 			}
+			// TODO: show result (output value / error)?
 		case *sdkv1.RunResponse_Poll:
 			if n.calls == nil {
 				n.calls = map[string]int{}
