@@ -36,7 +36,7 @@ var (
 	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
 	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
 
-	viewportStyle = lipgloss.NewStyle().Margin(2)
+	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
 )
 
 type DispatchID string
