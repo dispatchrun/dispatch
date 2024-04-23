@@ -85,21 +85,20 @@ previous run.`, defaultEndpoint),
 			// Enable the TUI if this is an interactive session and
 			// stdout/stderr aren't redirected.
 			var tui *TUI
+			var logWriter io.Writer = os.Stderr
 			if isTerminal(os.Stdin) && isTerminal(os.Stdout) && isTerminal(os.Stderr) {
 				tui = &TUI{}
+				logWriter = tui
 			}
 
-			if tui != nil {
-				slog.SetLogLoggerLevel(slog.LevelError + 1) // disable for now
-			} else if Verbose {
+			if Verbose || tui != nil {
 				prefix := []byte(pad("dispatch", prefixWidth) + " | ")
 				if Color {
 					prefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
 				}
-				// Print Dispatch logs with a prefix in verbose mode.
 				slog.SetDefault(slog.New(&prefixHandler{
-					Handler: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
-					stream:  os.Stderr,
+					Handler: slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelDebug}),
+					stream:  logWriter,
 					prefix:  prefix,
 				}))
 			}
@@ -129,10 +128,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			// to disambiguate Dispatch logs from the local application's logs.
 			var stdout io.ReadCloser
 			var stderr io.ReadCloser
-			if tui != nil {
-				cmd.Stdout = nil
-				cmd.Stderr = nil
-			} else if Verbose {
+			if Verbose || tui != nil {
 				var err error
 				stdout, err = cmd.StdoutPipe()
 				if err != nil {
@@ -146,8 +142,8 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				}
 				defer stderr.Close()
 			} else {
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
+				cmd.Stdout = logWriter
+				cmd.Stderr = logWriter
 			}
 
 			// Pass on environment variables to the local application.
@@ -280,8 +276,8 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				if Color {
 					prefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
 				}
-				go printPrefixedLines(os.Stderr, stdout, prefix, suffix)
-				go printPrefixedLines(os.Stderr, stderr, prefix, suffix)
+				go printPrefixedLines(logWriter, stdout, prefix, suffix)
+				go printPrefixedLines(logWriter, stderr, prefix, suffix)
 			}
 
 			err = cmd.Wait()

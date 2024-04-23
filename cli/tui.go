@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"strings"
@@ -48,7 +49,21 @@ type TUI struct {
 	spinner  spinner.Model
 	viewport viewport.Model
 	ready    bool
+
+	activeTab tab
+
+	logs   bytes.Buffer
+	logsMu sync.Mutex
 }
+
+type tab int
+
+const (
+	functionsTab tab = iota
+	logsTab
+)
+
+const tabCount = 2
 
 type node struct {
 	function string
@@ -76,6 +91,7 @@ func tick() tea.Cmd {
 
 func (t *TUI) Init() tea.Cmd {
 	t.spinner = spinner.New()
+	t.activeTab = functionsTab
 	return tea.Batch(t.spinner.Tick, tick())
 }
 
@@ -100,6 +116,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return t, tea.Quit
+		case "tab":
+			t.activeTab = (t.activeTab + 1) % tabCount
 		}
 	}
 	t.viewport, cmd = t.viewport.Update(msg)
@@ -126,7 +144,18 @@ func (t *TUI) View() string {
 	if !t.ready {
 		return statusStyle.Render(strings.Join(append(dispatchAscii, "Initializing..."), "\n"))
 	}
-	t.viewport.SetContent(t.render())
+
+	switch t.activeTab {
+	case functionsTab:
+		t.viewport.SetContent(t.render())
+	case logsTab:
+		t.viewport.SetContent(t.logs.String())
+	}
+
+	// TODO: how should we handle scrollback? The viewport supports it, but we also
+	//  want to follow the output if the user hasn't explicitly scrolled back..
+	t.viewport.GotoBottom()
+
 	return t.viewport.View()
 }
 
@@ -229,6 +258,13 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	}
 
 	t.nodes[id] = n
+}
+
+func (t *TUI) Write(b []byte) (int, error) {
+	t.logsMu.Lock()
+	defer t.logsMu.Unlock()
+
+	return t.logs.Write(b)
 }
 
 func (t *TUI) parseID(id string) DispatchID {
