@@ -498,12 +498,19 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	}
 	bridgePostRes, err := client.Do(bridgePostReq)
 	if err != nil {
-		return fmt.Errorf("failed to contact Dispatch API or write response: %v", err)
+		return fmt.Errorf("failed to contact Dispatch API or send response: %v", err)
 	}
-	if bridgePostRes.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("failed to contact Dispatch API: response code %d", bridgePostRes.StatusCode)
+	switch bridgePostRes.StatusCode {
+	case http.StatusAccepted:
+		return nil
+	case http.StatusNotFound:
+		// A 404 is expected if there's a timeout upstream that's hit
+		// before the response can be sent.
+		slog.Debug("request is no longer available", "request_id", requestID, "method", "post")
+		return nil
+	default:
+		return fmt.Errorf("failed to contact Dispatch API to send response: response code %d", bridgePostRes.StatusCode)
 	}
-	return nil
 }
 
 func cleanup(ctx context.Context, client *http.Client, url, requestID string) error {
@@ -520,12 +527,20 @@ func cleanup(ctx context.Context, client *http.Client, url, requestID string) er
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to contact Dispatch API: %v", err)
+		return fmt.Errorf("failed to contact Dispatch API to cleanup request: %v", err)
 	}
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to contact Dispatch API: response code %d", res.StatusCode)
+	switch res.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusNotFound:
+		// A 404 can occur if the request is cleaned up concurrently, either
+		// because a response was received upstream but the CLI didn't realize
+		// the response went through, or because a timeout was reached upstream.
+		slog.Debug("request is no longer available", "request_id", requestID, "method", "delete")
+		return nil
+	default:
+		return fmt.Errorf("failed to contact Dispatch API to cleanup request: response code %d", res.StatusCode)
 	}
-	return nil
 }
 
 func withoutEnv(env []string, prefixes ...string) []string {
