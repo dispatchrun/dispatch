@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	grayColor = lipgloss.Color("#7D7D7D")
-
+	grayColor   = lipgloss.Color("#7D7D7D")
+	whiteColor  = lipgloss.Color("#FFFFFF")
 	redColor    = lipgloss.Color("#FF0000")
 	greenColor  = lipgloss.Color("#00FF00")
 	yellowColor = lipgloss.Color("#FFAA00")
@@ -30,6 +30,9 @@ var (
 	spinnerStyle  = lipgloss.NewStyle().Foreground(grayColor)
 	statusStyle   = lipgloss.NewStyle().Foreground(grayColor)
 	treeStyle     = lipgloss.NewStyle().Foreground(grayColor)
+
+	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
+	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
 )
 
 type DispatchID string
@@ -104,9 +107,24 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return t, tea.Batch(cmds...)
 }
 
+// https://patorjk.com/software/taag/ (Larry 3D)
+var dispatchAscii = []string{
+	"",
+	logoStyle.Render("    __                                __           __"),
+	logoStyle.Render("   /\\ \\  __                          /\\ \\__       /\\ \\                   "),
+	logoStyle.Render("   \\_\\ \\/\\_\\    ____  _____      __  \\ \\ ,_\\   ___\\ \\ \\___               "),
+	logoStyle.Render("   /'_` \\/\\ \\  /',__\\/\\ '__`\\  /'__`\\ \\ \\ \\/  /'___\\ \\  _ `\\             "),
+	logoStyle.Render("  /\\ \\L\\ \\ \\ \\/\\__, `\\ \\ \\L\\ \\/\\ \\L\\.\\_\\ \\ \\_/\\ \\__/\\ \\ \\ \\ \\            "),
+	logoStyle.Render("  \\ \\___,_\\ \\_\\/\\____/\\ \\ ,__/\\ \\__/.\\_\\\\ \\__\\ \\____\\\\ \\_\\ \\_\\"),
+	logoStyle.Render("   \\/__,_ /\\/_/\\/___/  \\ \\ \\/  \\/__/\\/_/ \\/__/\\/____/ \\/_/\\/_/ ") + logoUnderscoreStyle.Render("  _______ "),
+	logoStyle.Render("                        \\ \\_\\                                  ") + logoUnderscoreStyle.Render(" /\\______\\"),
+	logoStyle.Render("                         \\/_/                                  ") + logoUnderscoreStyle.Render(" \\/______/"),
+	"",
+}
+
 func (t *TUI) View() string {
 	if !t.ready {
-		return statusStyle.Render("Initializing...")
+		return statusStyle.Render(strings.Join(append(dispatchAscii, "Initializing..."), "\n"))
 	}
 	t.viewport.SetContent(t.render())
 	return t.viewport.View()
@@ -223,7 +241,7 @@ func (t *TUI) render() string {
 	defer t.mu.Unlock()
 
 	if len(t.roots) == 0 {
-		return statusStyle.Render("Waiting for function calls...")
+		return statusStyle.Render(strings.Join(append(dispatchAscii, "Waiting for function calls..."), "\n"))
 	}
 
 	var b strings.Builder
