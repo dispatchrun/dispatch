@@ -35,6 +35,8 @@ var (
 
 	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
 	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
+
+	viewportStyle = lipgloss.NewStyle().Margin(2)
 )
 
 type DispatchID string
@@ -133,6 +135,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		width := msg.Width
 		if !t.ready {
 			t.viewport = viewport.New(width, height)
+			t.viewport.Style = viewportStyle
 			t.ready = true
 		} else {
 			t.viewport.Width = width
@@ -161,16 +164,15 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // https://patorjk.com/software/taag/ (Larry 3D)
 var dispatchAscii = []string{
-	"",
-	logoStyle.Render("    __                                __           __"),
-	logoStyle.Render("   /\\ \\  __                          /\\ \\__       /\\ \\                   "),
-	logoStyle.Render("   \\_\\ \\/\\_\\    ____  _____      __  \\ \\ ,_\\   ___\\ \\ \\___               "),
-	logoStyle.Render("   /'_` \\/\\ \\  /',__\\/\\ '__`\\  /'__`\\ \\ \\ \\/  /'___\\ \\  _ `\\             "),
-	logoStyle.Render("  /\\ \\L\\ \\ \\ \\/\\__, `\\ \\ \\L\\ \\/\\ \\L\\.\\_\\ \\ \\_/\\ \\__/\\ \\ \\ \\ \\") + logoUnderscoreStyle.Render("  _______ "),
-	logoStyle.Render("  \\ \\___,_\\ \\_\\/\\____/\\ \\ ,__/\\ \\__/.\\_\\\\ \\__\\ \\____\\\\ \\_\\ \\_\\") + logoUnderscoreStyle.Render("/\\______\\"),
-	logoStyle.Render("   \\/__,_ /\\/_/\\/___/  \\ \\ \\/  \\/__/\\/_/ \\/__/\\/____/ \\/_/\\/_/") + logoUnderscoreStyle.Render("\\/______/"),
-	logoStyle.Render("                        \\ \\_\\                                  "),
-	logoStyle.Render("                         \\/_/                                  "),
+	logoStyle.Render("  __                                __           __"),
+	logoStyle.Render(" /\\ \\  __                          /\\ \\__       /\\ \\                   "),
+	logoStyle.Render(" \\_\\ \\/\\_\\    ____  _____      __  \\ \\ ,_\\   ___\\ \\ \\___               "),
+	logoStyle.Render(" /'_` \\/\\ \\  /',__\\/\\ '__`\\  /'__`\\ \\ \\ \\/  /'___\\ \\  _ `\\             "),
+	logoStyle.Render("/\\ \\L\\ \\ \\ \\/\\__, `\\ \\ \\L\\ \\/\\ \\L\\.\\_\\ \\ \\_/\\ \\__/\\ \\ \\ \\ \\") + logoUnderscoreStyle.Render("  _______ "),
+	logoStyle.Render("\\ \\___,_\\ \\_\\/\\____/\\ \\ ,__/\\ \\__/.\\_\\\\ \\__\\ \\____\\\\ \\_\\ \\_\\") + logoUnderscoreStyle.Render("/\\______\\"),
+	logoStyle.Render(" \\/__,_ /\\/_/\\/___/  \\ \\ \\/  \\/__/\\/_/ \\/__/\\/____/ \\/_/\\/_/") + logoUnderscoreStyle.Render("\\/______/"),
+	logoStyle.Render("                      \\ \\_\\                                  "),
+	logoStyle.Render("                       \\/_/                                  "),
 	"",
 }
 
