@@ -9,6 +9,8 @@ import (
 	"time"
 
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -48,8 +50,10 @@ type TUI struct {
 
 	spinner  spinner.Model
 	viewport viewport.Model
+	help     help.Model
 	ready    bool
 
+	keys      []key.Binding
 	activeTab tab
 
 	logs   bytes.Buffer
@@ -91,7 +95,22 @@ func tick() tea.Cmd {
 
 func (t *TUI) Init() tea.Cmd {
 	t.spinner = spinner.New()
+	t.help = help.New()
+	// t.viewport is initialized on the first tea.WindowSizeMsg
+
+	t.keys = []key.Binding{
+		key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("tab", "switch tabs"),
+		),
+		key.NewBinding(
+			key.WithKeys("q", "ctrl+c", "esc"),
+			key.WithHelp("q", "quit"),
+		),
+	}
+
 	t.activeTab = functionsTab
+
 	return tea.Batch(t.spinner.Tick, tick())
 }
 
@@ -105,12 +124,14 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.spinner, cmd = t.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 	case tea.WindowSizeMsg:
+		height := msg.Height
+		width := msg.Width - 1 // reserve space for help
 		if !t.ready {
-			t.viewport = viewport.New(msg.Width, msg.Height)
+			t.viewport = viewport.New(width, height)
 			t.ready = true
 		} else {
-			t.viewport.Width = msg.Width
-			t.viewport.Height = msg.Height
+			t.viewport.Width = width
+			t.viewport.Height = height
 		}
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -156,7 +177,7 @@ func (t *TUI) View() string {
 	//  want to follow the output if the user hasn't explicitly scrolled back..
 	t.viewport.GotoBottom()
 
-	return t.viewport.View()
+	return t.viewport.View() + "\n" + t.help.ShortHelpView(t.keys)
 }
 
 func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
