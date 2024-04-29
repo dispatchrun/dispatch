@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -77,6 +78,9 @@ type node struct {
 	status   sdkv1.Status
 	error    error
 	done     bool
+
+	creationTime   time.Time
+	expirationTime time.Time
 
 	calls            map[string]int
 	outstandingCalls int
@@ -183,7 +187,7 @@ func (t *TUI) View() string {
 
 	switch t.activeTab {
 	case functionsTab:
-		t.viewport.SetContent(t.render())
+		t.viewport.SetContent(t.render(time.Now()))
 	case logsTab:
 		t.viewport.SetContent(t.logs.String())
 	}
@@ -230,6 +234,15 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 	n.function = req.Function
 	n.error = nil // clear previous error
 	n.status = 0  // clear previous status
+	if req.CreationTime != nil {
+		n.creationTime = req.CreationTime.AsTime()
+	}
+	if n.creationTime.IsZero() {
+		n.creationTime = time.Now()
+	}
+	if req.ExpirationTime != nil {
+		n.expirationTime = req.ExpirationTime.AsTime()
+	}
 	t.nodes[id] = n
 
 	// Upsert the parent and link its child, if applicable.
@@ -309,7 +322,7 @@ func (t *TUI) parseID(id string) DispatchID {
 	return DispatchID(id)
 }
 
-func (t *TUI) render() string {
+func (t *TUI) render(now time.Time) string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -323,14 +336,14 @@ func (t *TUI) render() string {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		t.renderTo(rootID, nil, &b)
+		t.renderTo(now, rootID, nil, &b)
 		i++
 	}
 
 	return b.String()
 }
 
-func (t *TUI) renderTo(id DispatchID, isLast []bool, b *strings.Builder) {
+func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.Builder) {
 	// t.mu must be locked.
 	n := t.nodes[id]
 
@@ -367,6 +380,11 @@ func (t *TUI) renderTo(id DispatchID, isLast []bool, b *strings.Builder) {
 			errorCauseStyle = errorStyle
 			showError = true
 		}
+	} else if !n.expirationTime.IsZero() && n.expirationTime.Before(now) {
+		n.error = errors.New("expired")
+		functionStyle = errorStyle
+		errorCauseStyle = errorStyle
+		showError = true
 	} else {
 		functionStyle = pendingStyle
 		if n.failures > 0 {
@@ -397,12 +415,13 @@ func (t *TUI) renderTo(id DispatchID, isLast []bool, b *strings.Builder) {
 		b.WriteByte(' ')
 		b.WriteString(spinnerStyle.Render(t.spinner.View()))
 	}
+
 	b.WriteByte('\n')
 
 	// Recursively render children.
 	for i, id := range n.orderedChildren {
 		last := i == len(n.orderedChildren)-1
-		t.renderTo(id, append(isLast[:len(isLast):len(isLast)], last), b)
+		t.renderTo(now, id, append(isLast[:len(isLast):len(isLast)], last), b)
 	}
 
 	// FIXME: hard to render calls before we know the Dispatch ID..
