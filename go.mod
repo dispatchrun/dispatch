@@ -3,7 +3,7 @@ module github.com/stealthrocket/dispatch
 go 1.22.0
 
 require (
-	buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.33.0-20240417235922-27bc9b1d8ccb.1
+	buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.33.0-20240429010127-639d52c5db75.1
 	github.com/charmbracelet/bubbles v0.18.0
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.9.1
