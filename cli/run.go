@@ -92,6 +92,10 @@ previous run.`, defaultEndpoint),
 			}
 
 			if Verbose || tui != nil {
+				level := slog.LevelInfo
+				if Verbose {
+					level = slog.LevelDebug
+				}
 				prefix := []byte(pad("dispatch", prefixWidth) + " | ")
 				if Color {
 					prefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
@@ -100,7 +104,7 @@ previous run.`, defaultEndpoint),
 					slog.NewTextHandler(&prefixLogWriter{
 						stream: logWriter,
 						prefix: prefix,
-					}, &slog.HandlerOptions{Level: slog.LevelDebug}),
+					}, &slog.HandlerOptions{Level: level}),
 				))
 			}
 
@@ -371,7 +375,12 @@ type FunctionCallObserver interface {
 }
 
 func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response, observer FunctionCallObserver) error {
-	slog.Debug("sending request to local application", "endpoint", LocalEndpoint, "request_id", requestID)
+	logger := slog.Default()
+	if Verbose {
+		logger = slog.With("request_id", requestID)
+	}
+
+	logger.Debug("sending request to local application", "endpoint", LocalEndpoint)
 
 	// Extract the nested request header/body.
 	endpointReq, err := http.ReadRequest(bufio.NewReader(bridgeGetRes.Body))
@@ -401,11 +410,12 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if err := proto.Unmarshal(endpointReqBody.Bytes(), &runRequest); err != nil {
 		return fmt.Errorf("invalid response from Dispatch API: %v", err)
 	}
-	switch d := runRequest.Directive.(type) {
+	logger.Debug("parsed request", "function", runRequest.Function, "dispatch_id", runRequest.DispatchId)
+	switch runRequest.Directive.(type) {
 	case *sdkv1.RunRequest_Input:
-		slog.Debug("calling function", "function", runRequest.Function, "request_id", requestID)
+		logger.Info("calling function", "function", runRequest.Function)
 	case *sdkv1.RunRequest_PollResult:
-		slog.Debug("resuming function", "function", runRequest.Function, "call_results", len(d.PollResult.Results), "request_id", requestID)
+		logger.Info("resuming function", "function", runRequest.Function)
 	}
 	if observer != nil {
 		observer.ObserveRequest(&runRequest)
@@ -457,22 +467,22 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 			switch d := runResponse.Directive.(type) {
 			case *sdkv1.RunResponse_Exit:
 				if d.Exit.TailCall != nil {
-					slog.Debug("function tail-called", "function", runRequest.Function, "tail_call", d.Exit.TailCall.Function, "request_id", requestID)
+					logger.Info("function tail-called", "function", runRequest.Function, "tail_call", d.Exit.TailCall.Function)
 				} else {
-					slog.Debug("function call succeeded", "function", runRequest.Function, "request_id", requestID)
+					logger.Info("function call succeeded", "function", runRequest.Function)
 				}
 			case *sdkv1.RunResponse_Poll:
-				slog.Debug("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls), "request_id", requestID)
+				logger.Info("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls))
 			}
 		default:
-			slog.Debug("function call failed", "function", runRequest.Function, "status", runResponse.Status, "request_id", requestID)
+			logger.Warn("function call failed", "function", runRequest.Function, "status", statusString(runResponse.Status))
 		}
 		if observer != nil {
 			observer.ObserveResponse(&runRequest, nil, endpointRes, &runResponse)
 		}
 	} else {
 		// The response might indicate some other issue, e.g. it could be a 404 if the function can't be found
-		slog.Debug("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode, "request_id", requestID)
+		logger.Warn("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode)
 		if observer != nil {
 			observer.ObserveResponse(&runRequest, nil, endpointRes, nil)
 		}
@@ -485,7 +495,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		pw.CloseWithError(err)
 	}()
 
-	slog.Debug("sending response to Dispatch", "request_id", requestID)
+	logger.Debug("sending response to Dispatch")
 
 	// Send the response back to the API.
 	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(pr))
@@ -507,7 +517,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	case http.StatusNotFound:
 		// A 404 is expected if there's a timeout upstream that's hit
 		// before the response can be sent.
-		slog.Debug("request is no longer available", "request_id", requestID, "method", "post")
+		logger.Debug("request is no longer available", "method", "post")
 		return nil
 	default:
 		return fmt.Errorf("failed to contact Dispatch API to send response: response code %d", bridgePostRes.StatusCode)
