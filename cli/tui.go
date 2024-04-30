@@ -18,6 +18,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const refreshInterval = time.Second / 2
+
 var (
 	grayColor   = lipgloss.Color("#7D7D7D")
 	whiteColor  = lipgloss.Color("#FFFFFF")
@@ -94,7 +96,7 @@ var _ tea.Model = (*TUI)(nil)
 type tickMsg struct{}
 
 func tick() tea.Cmd {
-	return tea.Tick(time.Second/10, func(time.Time) tea.Msg {
+	return tea.Tick(refreshInterval, func(time.Time) tea.Msg {
 		return tickMsg{}
 	})
 }
