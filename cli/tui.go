@@ -365,8 +365,13 @@ func padding(width int, s string) int {
 }
 
 func truncate(width int, s string) string {
+	var truncated bool
 	for ansi.PrintableRuneWidth(s) > width {
 		s = s[:len(s)-1]
+		truncated = true
+	}
+	if truncated {
+		s = s + "\033[0m"
 	}
 	return s
 }
