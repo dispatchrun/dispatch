@@ -85,6 +85,7 @@ type node struct {
 	status    sdkv1.Status
 	error     error
 
+	running  bool
 	done     bool
 	doneTime time.Time
 
@@ -241,6 +242,7 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 		n = node{}
 	}
 	n.function = req.Function
+	n.running = true
 	if req.CreationTime != nil {
 		n.creationTime = req.CreationTime.AsTime()
 	}
@@ -284,6 +286,9 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	n := t.nodes[id]
 
 	n.responses++
+	n.error = nil
+	n.status = 0
+	n.running = false
 
 	if res != nil {
 		if res.Status != sdkv1.Status_STATUS_OK {
@@ -461,12 +466,16 @@ func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.B
 	// TODO: parse/show arguments?
 
 	var status string
-	if n.error != nil {
+	if n.running {
+		status = "Running"
+		style = pendingStyle
+	} else if n.error != nil {
 		status = n.error.Error()
 	} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
 		status = statusString(n.status)
 	} else if pending && n.responses > 0 {
 		status = "Suspended"
+		style = pendingStyle
 	} else {
 		status = "Pending"
 	}
