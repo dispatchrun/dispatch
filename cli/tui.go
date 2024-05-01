@@ -344,6 +344,13 @@ func (t *TUI) Write(b []byte) (int, error) {
 	return t.logs.Write(b)
 }
 
+func (t *TUI) Read(b []byte) (int, error) {
+	t.logsMu.Lock()
+	defer t.logsMu.Unlock()
+
+	return t.logs.Read(b)
+}
+
 func (t *TUI) parseID(id string) DispatchID {
 	// TODO: [16]byte
 	return DispatchID(id)
