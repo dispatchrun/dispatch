@@ -200,8 +200,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				p := tea.NewProgram(tui,
 					tea.WithContext(ctx),
 					tea.WithoutSignalHandler(),
-					tea.WithoutCatchPanics(),
-					tea.WithMouseCellMotion())
+					tea.WithoutCatchPanics())
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
