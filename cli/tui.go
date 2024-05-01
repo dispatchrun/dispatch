@@ -33,7 +33,7 @@ var (
 	treeStyle    = lipgloss.NewStyle().Foreground(grayColor)
 
 	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
-	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(grayColor)
+	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
 
 	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
 
@@ -176,15 +176,12 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // https://patorjk.com/software/taag/ (Larry 3D)
 var dispatchAscii = []string{
-	logoStyle.Render("  __                                __           __"),
-	logoStyle.Render(" /\\ \\  __                          /\\ \\__       /\\ \\                   "),
-	logoStyle.Render(" \\_\\ \\/\\_\\    ____  _____      __  \\ \\ ,_\\   ___\\ \\ \\___               "),
-	logoStyle.Render(" /'_` \\/\\ \\  /',__\\/\\ '__`\\  /'__`\\ \\ \\ \\/  /'___\\ \\  _ `\\             "),
-	logoStyle.Render("/\\ \\L\\ \\ \\ \\/\\__, `\\ \\ \\L\\ \\/\\ \\L\\.\\_\\ \\ \\_/\\ \\__/\\ \\ \\ \\ \\") + logoUnderscoreStyle.Render("  _______ "),
-	logoStyle.Render("\\ \\___,_\\ \\_\\/\\____/\\ \\ ,__/\\ \\__/.\\_\\\\ \\__\\ \\____\\\\ \\_\\ \\_\\") + logoUnderscoreStyle.Render("/\\______\\"),
-	logoStyle.Render(" \\/__,_ /\\/_/\\/___/  \\ \\ \\/  \\/__/\\/_/ \\/__/\\/____/ \\/_/\\/_/") + logoUnderscoreStyle.Render("\\/______/"),
-	logoStyle.Render("                      \\ \\_\\                                  "),
-	logoStyle.Render("                       \\/_/                                  "),
+	logoStyle.Render(`     _ _                 _       _`),
+	logoStyle.Render(`  __| (_)___ _ __   __ _| |_ ___| |__`),
+	logoStyle.Render(` / _' | / __| '_ \ / _' | __/ __| '_ \`),
+	logoStyle.Render(`| (_| | \__ \ |_) | (_| | || (__| | | |`) + logoUnderscoreStyle.Render(" _____"),
+	logoStyle.Render(` \__,_|_|___/ .__/ \__,_|\__\___|_| |_|`) + logoUnderscoreStyle.Render("|_____|"),
+	logoStyle.Render(`            |_|`),
 	"",
 }
 
