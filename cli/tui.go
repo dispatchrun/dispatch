@@ -361,11 +361,21 @@ func padding(width int, s string) int {
 	return width - actual
 }
 
+func truncate(width int, s string) string {
+	for ansi.PrintableRuneWidth(s) > width {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
 func right(width int, s string) string {
 	return whitespace(padding(width, s)) + s
 }
 
 func left(width int, s string) string {
+	if ansi.PrintableRuneWidth(s) > width {
+		s = truncate(width-3, s) + "..."
+	}
 	return s + whitespace(padding(width, s))
 }
 
