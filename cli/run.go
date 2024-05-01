@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,11 +22,11 @@ import (
 	"syscall"
 	"time"
 
+	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
-
-	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 )
 
 var (
@@ -81,16 +83,34 @@ previous run.`, defaultEndpoint),
 
 			prefixWidth := max(len("dispatch"), len(arg0))
 
-			if Verbose {
+			if checkEndpoint(LocalEndpoint, time.Second) {
+				return fmt.Errorf("cannot start local application on address that's already in use: %v", LocalEndpoint)
+			}
+
+			// Enable the TUI if this is an interactive session and
+			// stdout/stderr aren't redirected.
+			var tui *TUI
+			var logWriter io.Writer = os.Stderr
+			if isTerminal(os.Stdin) && isTerminal(os.Stdout) && isTerminal(os.Stderr) {
+				tui = &TUI{}
+				logWriter = tui
+			}
+
+			if Verbose || tui != nil {
+				level := slog.LevelInfo
+				if Verbose {
+					level = slog.LevelDebug
+				}
 				prefix := []byte(pad("dispatch", prefixWidth) + " | ")
 				if Color {
 					prefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
 				}
-				// Print Dispatch logs with a prefix in verbose mode.
-				slog.SetDefault(slog.New(&prefixHandler{
-					Handler: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
-					stream:  os.Stderr,
-					prefix:  prefix,
+				slog.SetDefault(slog.New(&slogHandler{
+					stream: &prefixLogWriter{
+						stream: logWriter,
+						prefix: prefix,
+					},
+					level: level,
 				}))
 			}
 
@@ -98,7 +118,7 @@ previous run.`, defaultEndpoint),
 				BridgeSession = uuid.New().String()
 			}
 
-			if Verbose {
+			if Verbose || tui != nil {
 				slog.Info("starting session", "session_id", BridgeSession)
 			} else {
 				dialog(`Starting Dispatch session: %v
@@ -117,7 +137,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			// to disambiguate Dispatch logs from the local application's logs.
 			var stdout io.ReadCloser
 			var stderr io.ReadCloser
-			if Verbose {
+			if Verbose || tui != nil {
 				var err error
 				stdout, err = cmd.StdoutPipe()
 				if err != nil {
@@ -131,8 +151,8 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				}
 				defer stderr.Close()
 			} else {
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
+				cmd.Stdout = logWriter
+				cmd.Stderr = logWriter
 			}
 
 			// Pass on environment variables to the local application.
@@ -147,6 +167,10 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				"DISPATCH_ENDPOINT_URL=bridge://"+BridgeSession,
 				"DISPATCH_ENDPOINT_ADDR="+LocalEndpoint,
 			)
+
+			// Set OS-specific process attributes.
+			cmd.SysProcAttr = &syscall.SysProcAttr{}
+			setSysProcAttr(cmd.SysProcAttr)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -175,6 +199,27 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					}
 				}
 			}()
+
+			// Initialize the TUI.
+			if tui != nil {
+				p := tea.NewProgram(tui,
+					tea.WithContext(ctx),
+					tea.WithoutSignalHandler(),
+					tea.WithoutCatchPanics())
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+
+					if _, err := p.Run(); err != nil && !errors.Is(err, tea.ErrProgramKilled) {
+						panic(err)
+					}
+					// Quitting the TUI sends an implicit interrupt.
+					select {
+					case signals <- syscall.SIGINT:
+					default:
+					}
+				}()
+			}
 
 			bridgeSessionURL := fmt.Sprintf("%s/sessions/%s", DispatchBridgeUrl, BridgeSession)
 
@@ -212,7 +257,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					go func() {
 						defer wg.Done()
 
-						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res)
+						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res, tui)
 						res.Body.Close()
 						if err != nil {
 							if ctx.Err() == nil {
@@ -237,14 +282,14 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
 			}
 
-			if Verbose {
+			if Verbose || tui != nil {
 				prefix := []byte(pad(arg0, prefixWidth) + " | ")
 				suffix := []byte("\n")
 				if Color {
 					prefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
 				}
-				go printPrefixedLines(os.Stderr, stdout, prefix, suffix)
-				go printPrefixedLines(os.Stderr, stderr, prefix, suffix)
+				go printPrefixedLines(logWriter, stdout, prefix, suffix)
+				go printPrefixedLines(logWriter, stderr, prefix, suffix)
 			}
 
 			err = cmd.Wait()
@@ -260,12 +305,18 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				err = nil
 
 				if atomic.LoadInt64(&successfulPolls) > 0 && !Verbose {
-					dialog("To resume this Dispatch session:\n\n\tdispatch run --session %s -- %s",
-						BridgeSession, strings.Join(args, " "))
+					dispatchArg0 := os.Args[0]
+					dialog("To resume this Dispatch session:\n\n\t%s run --session %s -- %s",
+						dispatchArg0, BridgeSession, strings.Join(args, " "))
 				}
 			}
 
 			if err != nil {
+				if r, ok := logWriter.(io.Reader); ok {
+					// Dump any buffered logs to stderr in this case.
+					time.Sleep(100 * time.Millisecond)
+					_, _ = io.Copy(os.Stderr, r)
+				}
 				return fmt.Errorf("failed to invoke command '%s': %v", strings.Join(args, " "), err)
 			}
 			return nil
@@ -317,8 +368,34 @@ func poll(ctx context.Context, client *http.Client, url string) (string, *http.R
 	return requestID, res, nil
 }
 
-func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response) error {
-	slog.Debug("sending request to local application", "endpoint", LocalEndpoint, "request_id", requestID)
+// FunctionCallObserver observes function call requests and responses.
+//
+// The observer may be invoked concurrently from many goroutines.
+type FunctionCallObserver interface {
+	// ObserveRequest observes a RunRequest as it passes from the API through
+	// the CLI to the local application.
+	ObserveRequest(*sdkv1.RunRequest)
+
+	// ObserveResponse observes a response to the RunRequest.
+	//
+	// If the RunResponse is nil, it means the local application did not return
+	// a valid response. If the http.Response is not nil, it means an HTTP
+	// response was generated, but it wasn't a valid RunResponse. The error may
+	// be present if there was either an error making the HTTP request, or parsing
+	// the response.
+	//
+	// ObserveResponse always comes after a call to ObserveRequest for any given
+	// RunRequest.
+	ObserveResponse(*sdkv1.RunRequest, error, *http.Response, *sdkv1.RunResponse)
+}
+
+func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response, observer FunctionCallObserver) error {
+	logger := slog.Default()
+	if Verbose {
+		logger = slog.With("request_id", requestID)
+	}
+
+	logger.Debug("sending request to local application", "endpoint", LocalEndpoint)
 
 	// Extract the nested request header/body.
 	endpointReq, err := http.ReadRequest(bufio.NewReader(bridgeGetRes.Body))
@@ -348,11 +425,15 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if err := proto.Unmarshal(endpointReqBody.Bytes(), &runRequest); err != nil {
 		return fmt.Errorf("invalid response from Dispatch API: %v", err)
 	}
-	switch d := runRequest.Directive.(type) {
+	logger.Debug("parsed request", "function", runRequest.Function, "dispatch_id", runRequest.DispatchId)
+	switch runRequest.Directive.(type) {
 	case *sdkv1.RunRequest_Input:
-		slog.Debug("calling function", "function", runRequest.Function, "request_id", requestID)
+		logger.Info("calling function", "function", runRequest.Function)
 	case *sdkv1.RunRequest_PollResult:
-		slog.Debug("resuming function", "function", runRequest.Function, "call_results", len(d.PollResult.Results), "request_id", requestID)
+		logger.Info("resuming function", "function", runRequest.Function)
+	}
+	if observer != nil {
+		observer.ObserveRequest(&runRequest)
 	}
 
 	// The RequestURI field must be cleared for client.Do() to
@@ -365,6 +446,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	endpointReq.URL.Host = LocalEndpoint
 	endpointRes, err := client.Do(endpointReq)
 	if err != nil {
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, err, nil, nil)
+		}
 		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
 	}
 
@@ -376,6 +460,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	_, err = io.Copy(endpointResBody, endpointRes.Body)
 	endpointRes.Body.Close()
 	if err != nil {
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, err, endpointRes, nil)
+		}
 		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
 	}
 	endpointRes.Body = io.NopCloser(endpointResBody)
@@ -385,6 +472,9 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if endpointRes.StatusCode == http.StatusOK && endpointRes.Header.Get("Content-Type") == "application/proto" {
 		var runResponse sdkv1.RunResponse
 		if err := proto.Unmarshal(endpointResBody.Bytes(), &runResponse); err != nil {
+			if observer != nil {
+				observer.ObserveResponse(&runRequest, err, endpointRes, nil)
+			}
 			return fmt.Errorf("invalid response from local application endpoint (%s): %v", LocalEndpoint, err)
 		}
 		switch runResponse.Status {
@@ -392,19 +482,25 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 			switch d := runResponse.Directive.(type) {
 			case *sdkv1.RunResponse_Exit:
 				if d.Exit.TailCall != nil {
-					slog.Debug("function tail-called", "function", runRequest.Function, "tail_call", d.Exit.TailCall.Function, "request_id", requestID)
+					logger.Info("function tail-called", "function", runRequest.Function, "tail_call", d.Exit.TailCall.Function)
 				} else {
-					slog.Debug("function call succeeded", "function", runRequest.Function, "request_id", requestID)
+					logger.Info("function call succeeded", "function", runRequest.Function)
 				}
 			case *sdkv1.RunResponse_Poll:
-				slog.Debug("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls), "request_id", requestID)
+				logger.Info("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls))
 			}
 		default:
-			slog.Debug("function call failed", "function", runRequest.Function, "status", runResponse.Status, "request_id", requestID)
+			logger.Warn("function call failed", "function", runRequest.Function, "status", statusString(runResponse.Status))
+		}
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, nil, endpointRes, &runResponse)
 		}
 	} else {
 		// The response might indicate some other issue, e.g. it could be a 404 if the function can't be found
-		slog.Debug("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode, "request_id", requestID)
+		logger.Warn("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode)
+		if observer != nil {
+			observer.ObserveResponse(&runRequest, nil, endpointRes, nil)
+		}
 	}
 
 	// Use io.Pipe to convert the response writer into an io.Reader.
@@ -414,7 +510,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		pw.CloseWithError(err)
 	}()
 
-	slog.Debug("sending response to Dispatch", "request_id", requestID)
+	logger.Debug("sending response to Dispatch")
 
 	// Send the response back to the API.
 	bridgePostReq, err := http.NewRequestWithContext(ctx, "POST", url, bufio.NewReader(pr))
@@ -436,7 +532,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	case http.StatusNotFound:
 		// A 404 is expected if there's a timeout upstream that's hit
 		// before the response can be sent.
-		slog.Debug("request is no longer available", "request_id", requestID, "method", "post")
+		logger.Debug("request is no longer available", "method", "post")
 		return nil
 	default:
 		return fmt.Errorf("failed to contact Dispatch API to send response: response code %d", bridgePostRes.StatusCode)
@@ -473,6 +569,18 @@ func cleanup(ctx context.Context, client *http.Client, url, requestID string) er
 	}
 }
 
+func checkEndpoint(addr string, timeout time.Duration) bool {
+	slog.Debug("checking endpoint", "addr", addr)
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		slog.Debug("endpoint could not be contacted", "addr", addr, "err", err)
+		return false
+	}
+	slog.Debug("endpoint contacted successfully", "addr", addr)
+	conn.Close()
+	return true
+}
+
 func withoutEnv(env []string, prefixes ...string) []string {
 	return slices.DeleteFunc(env, func(v string) bool {
 		for _, prefix := range prefixes {
@@ -482,24 +590,6 @@ func withoutEnv(env []string, prefixes ...string) []string {
 		}
 		return false
 	})
-}
-
-type prefixHandler struct {
-	slog.Handler
-	stream io.Writer
-	prefix []byte
-	suffix []byte
-}
-
-func (h *prefixHandler) Handle(ctx context.Context, r slog.Record) error {
-	if _, err := h.stream.Write(h.prefix); err != nil {
-		return err
-	}
-	if err := h.Handler.Handle(ctx, r); err != nil {
-		return err
-	}
-	_, err := h.stream.Write(h.suffix)
-	return err
 }
 
 func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {

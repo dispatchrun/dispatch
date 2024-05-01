@@ -9,5 +9,5 @@ deps:
   - remote: buf.build
     owner: stealthrocket
     repository: dispatch-proto
-    commit: 27bc9b1d8ccb4ab2a37063596845524b
-    digest: shake256:deb2dca49a7ed8943f1839c0b85fd55f060d2a436e40f33f736f6e979236bb5fab2b5ed8b8dfd1b4883cecf03f541c19a65c26f938c504b285d9a4b8c8d18820
+    commit: 639d52c5db754187a9461d96d783c093
+    digest: shake256:0fc989737c9db14c41feab7f2dc847b9cf7949cdb1852e3a5337dbb99d909a38acd9211b60501274cac55924ea18c2b18889a7087183ab5d850e79e3b4c3eaed
