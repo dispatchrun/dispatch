@@ -361,11 +361,7 @@ func whitespace(width int) string {
 }
 
 func padding(width int, s string) int {
-	actual := ansi.PrintableRuneWidth(s)
-	if actual > width {
-		panic("string is too large")
-	}
-	return width - actual
+	return width - ansi.PrintableRuneWidth(s)
 }
 
 func truncate(width int, s string) string {
@@ -376,12 +372,15 @@ func truncate(width int, s string) string {
 }
 
 func right(width int, s string) string {
+	if ansi.PrintableRuneWidth(s) > width {
+		return truncate(width-3, s) + "..."
+	}
 	return whitespace(padding(width, s)) + s
 }
 
 func left(width int, s string) string {
 	if ansi.PrintableRuneWidth(s) > width {
-		s = truncate(width-3, s) + "..."
+		return truncate(width-3, s) + "..."
 	}
 	return s + whitespace(padding(width, s))
 }
