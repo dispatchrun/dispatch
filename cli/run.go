@@ -163,6 +163,10 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				"DISPATCH_ENDPOINT_ADDR="+LocalEndpoint,
 			)
 
+			// Set OS-specific process attributes.
+			cmd.SysProcAttr = &syscall.SysProcAttr{}
+			setSysProcAttr(cmd.SysProcAttr)
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
