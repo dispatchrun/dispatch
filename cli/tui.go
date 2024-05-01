@@ -51,6 +51,8 @@ type DispatchID string
 type TUI struct {
 	mu sync.Mutex
 
+	windowHeight int
+
 	roots        map[DispatchID]struct{}
 	orderedRoots []DispatchID
 
@@ -145,6 +147,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.spinner, cmd = t.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 	case tea.WindowSizeMsg:
+		t.windowHeight = msg.Height
+
 		height := msg.Height - 1 // reserve space for help
 		width := msg.Width
 		if !t.ready {
@@ -190,9 +194,11 @@ var dispatchAscii = []string{
 	"",
 }
 
+var minWindowHeight = len(dispatchAscii) + 3
+
 func (t *TUI) View() string {
 	if !t.ready {
-		return statusStyle.Render(strings.Join(append(dispatchAscii, "Initializing..."), "\n"))
+		return statusStyle.Render(strings.Join(append(dispatchAscii, "Initializing...\n"), "\n"))
 	}
 
 	switch t.activeTab {
@@ -206,6 +212,9 @@ func (t *TUI) View() string {
 	if t.tail {
 		t.viewport.GotoBottom()
 	}
+
+	// Shrink the viewport so it contains the content and help line only.
+	t.viewport.Height = max(minWindowHeight, min(t.viewport.TotalLineCount()+1, t.windowHeight-1))
 
 	return t.viewport.View() + "\n" + t.help.ShortHelpView(t.keys)
 }
@@ -365,7 +374,7 @@ func (t *TUI) render(now time.Time) string {
 	defer t.mu.Unlock()
 
 	if len(t.roots) == 0 {
-		return statusStyle.Render(strings.Join(append(dispatchAscii, "Waiting for function calls..."), "\n"))
+		return statusStyle.Render(strings.Join(append(dispatchAscii, "Waiting for function calls...\n"), "\n"))
 	}
 
 	var b strings.Builder
