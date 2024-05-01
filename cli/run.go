@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -81,6 +82,10 @@ previous run.`, defaultEndpoint),
 			arg0 := filepath.Base(args[0])
 
 			prefixWidth := max(len("dispatch"), len(arg0))
+
+			if checkEndpoint(LocalEndpoint, time.Second) {
+				return fmt.Errorf("cannot start local application on address that's already in use: %v", LocalEndpoint)
+			}
 
 			// Enable the TUI if this is an interactive session and
 			// stdout/stderr aren't redirected.
@@ -556,6 +561,18 @@ func cleanup(ctx context.Context, client *http.Client, url, requestID string) er
 	default:
 		return fmt.Errorf("failed to contact Dispatch API to cleanup request: response code %d", res.StatusCode)
 	}
+}
+
+func checkEndpoint(addr string, timeout time.Duration) bool {
+	slog.Debug("checking endpoint", "addr", addr)
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		slog.Debug("endpoint could not be contacted", "addr", addr, "err", err)
+		return false
+	}
+	slog.Debug("endpoint contacted successfully", "addr", addr)
+	conn.Close()
+	return true
 }
 
 func withoutEnv(env []string, prefixes ...string) []string {
