@@ -203,7 +203,7 @@ func (t *TUI) View() string {
 
 	switch t.activeTab {
 	case functionsTab:
-		t.viewport.SetContent(t.render(time.Now()))
+		t.viewport.SetContent(t.functionCallsView(time.Now()))
 	case logsTab:
 		t.viewport.SetContent(t.logs.String())
 	}
@@ -385,7 +385,7 @@ func left(width int, s string) string {
 	return s + whitespace(padding(width, s))
 }
 
-func (t *TUI) render(now time.Time) string {
+func (t *TUI) functionCallsView(now time.Time) string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -393,21 +393,48 @@ func (t *TUI) render(now time.Time) string {
 		return statusStyle.Render(strings.Join(append(dispatchAscii, "Waiting for function calls...\n"), "\n"))
 	}
 
+	// Render function calls in a hybrid table/tree view.
 	var b strings.Builder
-	var i int
-	for _, rootID := range t.orderedRoots {
+	var rows rowBuffer
+	for i, rootID := range t.orderedRoots {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		b.WriteString(tableHeader())
-		t.renderTo(now, rootID, nil, &b)
-		i++
+
+		t.buildRows(now, rootID, nil, &rows)
+
+		b.WriteString(tableHeaderView())
+		for i := range rows.rows {
+			b.WriteString(tableRowView(&rows.rows[i]))
+		}
+
+		rows.reset()
 	}
 
 	return b.String()
 }
 
-func tableHeader() string {
+type row struct {
+	spinner  string
+	attempts int
+	elapsed  time.Duration
+	function string
+	status   string
+}
+
+type rowBuffer struct {
+	rows []row
+}
+
+func (b *rowBuffer) add(r row) {
+	b.rows = append(b.rows, r)
+}
+
+func (b *rowBuffer) reset() {
+	b.rows = b.rows[:0]
+}
+
+func tableHeaderView() string {
 	return whitespace(2) +
 		left(30, headerStyle.Render("Function")) + " " +
 		right(8, headerStyle.Render("Attempts")) + " " +
@@ -416,25 +443,25 @@ func tableHeader() string {
 		"\n"
 }
 
-func tableRow(spinner string, attempts int, elapsed time.Duration, function, status string) string {
-	attemptsStr := strconv.Itoa(attempts)
+func tableRowView(r *row) string {
+	attemptsStr := strconv.Itoa(r.attempts)
 
 	var elapsedStr string
-	if elapsed > 0 {
-		elapsedStr = elapsed.String()
+	if r.elapsed > 0 {
+		elapsedStr = r.elapsed.String()
 	} else {
 		elapsedStr = "?"
 	}
 
-	return left(2, spinner) +
-		left(30, function) + " " +
+	return left(2, r.spinner) +
+		left(30, r.function) + " " +
 		right(8, attemptsStr) + " " +
 		right(10, elapsedStr) + " " +
-		left(30, status) +
+		left(30, r.status) +
 		"\n"
 }
 
-func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.Builder) {
+func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBuffer) {
 	// t.mu must be locked.
 	n := t.nodes[id]
 
@@ -524,12 +551,12 @@ func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.B
 		elapsed = tail.Sub(n.creationTime).Truncate(time.Millisecond)
 	}
 
-	b.WriteString(tableRow(spinner, attempts, elapsed, function.String(), status))
+	rows.add(row{spinner, attempts, elapsed, function.String(), status})
 
 	// Recursively render children.
 	for i, id := range n.orderedChildren {
 		last := i == len(n.orderedChildren)-1
-		t.renderTo(now, id, append(isLast[:len(isLast):len(isLast)], last), b)
+		t.buildRows(now, id, append(isLast[:len(isLast):len(isLast)], last), rows)
 	}
 
 	// FIXME: hard to render calls before we know the Dispatch ID..
