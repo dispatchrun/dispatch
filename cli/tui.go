@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/ansi"
 )
 
 const refreshInterval = time.Second / 2
@@ -40,6 +42,8 @@ var (
 	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
 
 	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
+
+	headerStyle = lipgloss.NewStyle().Foreground(whiteColor).Bold(true)
 )
 
 type DispatchID string
@@ -79,7 +83,9 @@ type node struct {
 	failures int
 	status   sdkv1.Status
 	error    error
+
 	done     bool
+	doneTime time.Time
 
 	creationTime   time.Time
 	expirationTime time.Time
@@ -102,7 +108,7 @@ func tick() tea.Cmd {
 }
 
 func (t *TUI) Init() tea.Cmd {
-	t.spinner = spinner.New()
+	t.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
 	t.help = help.New()
 	// t.viewport is initialized on the first tea.WindowSizeMsg
 
@@ -234,8 +240,6 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 		n = node{}
 	}
 	n.function = req.Function
-	n.error = nil // clear previous error
-	n.status = 0  // clear previous status
 	if req.CreationTime != nil {
 		n.creationTime = req.CreationTime.AsTime()
 	}
@@ -309,6 +313,10 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 		n.error = err
 	}
 
+	if n.done && n.doneTime.IsZero() {
+		n.doneTime = time.Now()
+	}
+
 	t.nodes[id] = n
 }
 
@@ -322,6 +330,26 @@ func (t *TUI) Write(b []byte) (int, error) {
 func (t *TUI) parseID(id string) DispatchID {
 	// TODO: [16]byte
 	return DispatchID(id)
+}
+
+func whitespace(width int) string {
+	return strings.Repeat(" ", width)
+}
+
+func padding(width int, s string) int {
+	actual := ansi.PrintableRuneWidth(s)
+	if actual > width {
+		panic("string is too large")
+	}
+	return width - actual
+}
+
+func right(width int, s string) string {
+	return whitespace(padding(width, s)) + s
+}
+
+func left(width int, s string) string {
+	return s + whitespace(padding(width, s))
 }
 
 func (t *TUI) render(now time.Time) string {
@@ -338,6 +366,7 @@ func (t *TUI) render(now time.Time) string {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
+		b.WriteString(tableHeader())
 		t.renderTo(now, rootID, nil, &b)
 		i++
 	}
@@ -345,11 +374,39 @@ func (t *TUI) render(now time.Time) string {
 	return b.String()
 }
 
+func tableHeader() string {
+	return whitespace(2) +
+		left(30, headerStyle.Render("Function")) + " " +
+		right(8, headerStyle.Render("Attempts")) + " " +
+		right(10, headerStyle.Render("Duration")) + " " +
+		left(30, headerStyle.Render("Status")) +
+		"\n"
+}
+
+func tableRow(spinner string, attempts int, elapsed time.Duration, function, status string) string {
+	attemptsStr := strconv.Itoa(attempts)
+
+	var elapsedStr string
+	if elapsed > 0 {
+		elapsedStr = elapsed.String()
+	} else {
+		elapsedStr = "?"
+	}
+
+	return left(2, spinner) +
+		left(30, function) + " " +
+		right(8, attemptsStr) + " " +
+		right(10, elapsedStr) + " " +
+		left(30, status) +
+		"\n"
+}
+
 func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.Builder) {
 	// t.mu must be locked.
 	n := t.nodes[id]
 
 	// Print the tree prefix.
+	var function strings.Builder
 	for i, last := range isLast {
 		var s string
 		if i == len(isLast)-1 {
@@ -365,60 +422,70 @@ func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.B
 				s = "│ "
 			}
 		}
-		b.WriteString(treeStyle.Render(s))
-		b.WriteByte(' ')
+		function.WriteString(treeStyle.Render(s))
+		function.WriteByte(' ')
 	}
 
 	// Determine what to print, based on the status of the function call.
-	var functionStyle lipgloss.Style
-	var errorCauseStyle lipgloss.Style
-	showError := false
-	showSpinner := false
+	var style lipgloss.Style
+	pending := false
 	if n.done {
 		if n.status == sdkv1.Status_STATUS_OK {
-			functionStyle = okStyle
+			style = okStyle
 		} else {
-			functionStyle = errorStyle
-			errorCauseStyle = errorStyle
-			showError = true
+			style = errorStyle
 		}
 	} else if !n.expirationTime.IsZero() && n.expirationTime.Before(now) {
-		n.error = errors.New("expired")
-		functionStyle = errorStyle
-		errorCauseStyle = errorStyle
-		showError = true
+		n.error = errors.New("Expired")
+		style = errorStyle
+		n.done = true
+		n.doneTime = n.expirationTime
 	} else {
-		functionStyle = pendingStyle
+		style = pendingStyle
 		if n.failures > 0 {
-			functionStyle = retryStyle
-			errorCauseStyle = retryStyle
-			showError = true
+			style = retryStyle
 		}
-		showSpinner = true
+		pending = true
 	}
 
 	// Render the function call.
 	if n.function != "" {
-		b.WriteString(functionStyle.Render(n.function))
+		function.WriteString(style.Render(n.function))
 	} else {
-		b.WriteString(functionStyle.Render("<?>"))
-	}
-	// TODO: parse/show arguments?
-	if showError && (n.error != nil || n.status != sdkv1.Status_STATUS_UNSPECIFIED) {
-		b.WriteString(statusStyle.Render(" ("))
-		if n.error != nil {
-			b.WriteString(errorCauseStyle.Render(n.error.Error()))
-		} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
-			b.WriteString(errorCauseStyle.Render(statusString(n.status)))
-		}
-		b.WriteString(statusStyle.Render(")"))
-	}
-	if showSpinner {
-		b.WriteByte(' ')
-		b.WriteString(spinnerStyle.Render(t.spinner.View()))
+		function.WriteString(style.Render("(?)"))
 	}
 
-	b.WriteByte('\n')
+	// TODO: parse/show arguments?
+
+	var status string
+	if n.error != nil {
+		status = n.error.Error()
+	} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
+		status = statusString(n.status)
+	} else if pending {
+		status = "Pending"
+	}
+	status = style.Render(status)
+
+	var spinner string
+	if pending {
+		spinner = spinnerStyle.Render(t.spinner.View())
+	}
+
+	attempts := n.failures + 1
+
+	var elapsed time.Duration
+	if !n.creationTime.IsZero() {
+		var tail time.Time
+		if !n.done {
+			tail = now
+		} else {
+			tail = n.doneTime
+		}
+		elapsed = tail.Sub(n.creationTime).Truncate(time.Millisecond)
+	}
+
+	b.WriteString(tableRow(spinner, attempts, elapsed, function.String(), status))
 
 	// Recursively render children.
 	for i, id := range n.orderedChildren {
@@ -446,19 +513,19 @@ func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.B
 func statusString(status sdkv1.Status) string {
 	switch status {
 	case sdkv1.Status_STATUS_OK:
-		return "ok"
+		return "OK"
 	case sdkv1.Status_STATUS_TIMEOUT:
-		return "timeout"
+		return "Timeout"
 	case sdkv1.Status_STATUS_THROTTLED:
-		return "throttled"
+		return "Throttled"
 	case sdkv1.Status_STATUS_INVALID_ARGUMENT:
-		return "invalid response"
+		return "Invalid response"
 	case sdkv1.Status_STATUS_TEMPORARY_ERROR:
-		return "temporary error"
+		return "Temporary error"
 	case sdkv1.Status_STATUS_PERMANENT_ERROR:
-		return "permanent error"
+		return "Permanent error"
 	case sdkv1.Status_STATUS_INCOMPATIBLE_STATE:
-		return "incompatible state"
+		return "Incompatible state"
 	case sdkv1.Status_STATUS_DNS_ERROR:
 		return "DNS error"
 	case sdkv1.Status_STATUS_TCP_ERROR:
@@ -468,11 +535,11 @@ func statusString(status sdkv1.Status) string {
 	case sdkv1.Status_STATUS_HTTP_ERROR:
 		return "HTTP error"
 	case sdkv1.Status_STATUS_UNAUTHENTICATED:
-		return "unauthenticated"
+		return "Unauthenticated"
 	case sdkv1.Status_STATUS_PERMISSION_DENIED:
-		return "permission denied"
+		return "Permission denied"
 	case sdkv1.Status_STATUS_NOT_FOUND:
-		return "not found"
+		return "Not found"
 	default:
 		return status.String()
 	}
