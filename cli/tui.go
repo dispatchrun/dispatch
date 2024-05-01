@@ -23,21 +23,28 @@ import (
 const refreshInterval = time.Second / 2
 
 var (
+	// Style for the viewport that contains everything.
+	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
+
+	// Styles for the dispatch_ ASCII logo.
+	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
+	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
+
+	// Style for the line under the logo as the CLI is initializing/waiting.
+	statusStyle = lipgloss.NewStyle().Foreground(grayColor)
+
+	// Style for the table of function calls.
+	tableHeaderStyle = lipgloss.NewStyle().Foreground(whiteColor).Bold(true)
+
+	// Styles for function names and statuses in the table.
 	pendingStyle = lipgloss.NewStyle().Foreground(grayColor)
 	retryStyle   = lipgloss.NewStyle().Foreground(yellowColor)
 	errorStyle   = lipgloss.NewStyle().Foreground(redColor)
 	okStyle      = lipgloss.NewStyle().Foreground(greenColor)
 
+	// Styles for other components inside the table.
 	spinnerStyle = lipgloss.NewStyle().Foreground(grayColor)
-	statusStyle  = lipgloss.NewStyle().Foreground(grayColor)
 	treeStyle    = lipgloss.NewStyle().Foreground(grayColor)
-
-	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
-	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
-
-	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
-
-	headerStyle = lipgloss.NewStyle().Foreground(whiteColor).Bold(true)
 )
 
 type DispatchID string
@@ -45,24 +52,27 @@ type DispatchID string
 type TUI struct {
 	mu sync.Mutex
 
-	windowHeight int
-
+	// Storage for the function call hierarchies. Each function call
+	// has a "root" node, and nodes can have zero or more children.
+	//
+	// FIXME: we never clean up items from these maps
 	roots        map[DispatchID]struct{}
 	orderedRoots []DispatchID
+	nodes        map[DispatchID]node
 
-	nodes map[DispatchID]node
+	// Storage for logs.
+	logs bytes.Buffer
 
-	spinner  spinner.Model
-	viewport viewport.Model
-	help     help.Model
-	ready    bool
-
-	keys      []key.Binding
-	activeTab tab
-	tail      bool
-
-	logs   bytes.Buffer
-	logsMu sync.Mutex
+	// TUI models / options / flags, used to display the information
+	// above.
+	spinner      spinner.Model
+	viewport     viewport.Model
+	help         help.Model
+	ready        bool
+	keys         []key.Binding
+	activeTab    tab
+	tail         bool
+	windowHeight int
 }
 
 type tab int
@@ -75,31 +85,35 @@ const (
 const tabCount = 2
 
 type node struct {
-	function  string
+	function string
+
 	failures  int
 	responses int
-	status    sdkv1.Status
-	error     error
 
-	running  bool
-	done     bool
-	doneTime time.Time
+	status sdkv1.Status
+	error  error
+
+	running bool
+	done    bool
 
 	creationTime   time.Time
 	expirationTime time.Time
-
-	calls            map[string]int
-	outstandingCalls int
+	doneTime       time.Time
 
 	children        map[DispatchID]struct{}
 	orderedChildren []DispatchID
 }
 
-var _ tea.Model = (*TUI)(nil)
-
 type tickMsg struct{}
 
 func tick() tea.Cmd {
+	// The TUI isn't in the driver's seat. Instead, we have the layer
+	// up coordinating the interactions between the Dispatch API and
+	// the local application. The layer up notifies the TUI of changes
+	// via the FunctionCallObserver interface.
+	//
+	// To keep the TUI up to date, we have a ticker that sends messages
+	// at a fixed interval.
 	return tea.Tick(refreshInterval, func(time.Time) tea.Msg {
 		return tickMsg{}
 	})
@@ -108,7 +122,7 @@ func tick() tea.Cmd {
 func (t *TUI) Init() tea.Cmd {
 	t.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
 	t.help = help.New()
-	// t.viewport is initialized on the first tea.WindowSizeMsg
+	// Note that t.viewport is initialized on the first tea.WindowSizeMsg.
 
 	t.keys = []key.Binding{
 		key.NewBinding(
@@ -132,17 +146,20 @@ func (t *TUI) Init() tea.Cmd {
 }
 
 func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Here we handle "messages" such as key presses, window size changes,
+	// refresh ticks, etc.
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tickMsg:
 		cmds = append(cmds, tick())
 	case spinner.TickMsg:
+		// Forward this tick to the spinner model so that it updates.
 		t.spinner, cmd = t.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 	case tea.WindowSizeMsg:
+		// Initialized or resize the viewport.
 		t.windowHeight = msg.Height
-
 		height := msg.Height - 1 // reserve space for help
 		width := msg.Width
 		if !t.ready {
@@ -164,17 +181,14 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "down", "left", "right", "pgup", "pgdown", "ctrl+u", "ctrl+d":
 			t.tail = false
 		}
-	case tea.MouseMsg:
-		if msg.Action == tea.MouseActionPress && (msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown) {
-			t.tail = false
-		}
 	}
+	// Forward messages to the viewport, e.g. for scroll back support.
 	t.viewport, cmd = t.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 	return t, tea.Batch(cmds...)
 }
 
-// https://patorjk.com/software/taag/ (Larry 3D)
+// https://patorjk.com/software/taag/ (Ogre)
 var dispatchAscii = []string{
 	logoStyle.Render(`     _ _                 _       _`),
 	logoStyle.Render(`  __| (_)___ _ __   __ _| |_ ___| |__`),
@@ -192,6 +206,7 @@ func (t *TUI) View() string {
 		return statusStyle.Render(strings.Join(append(dispatchAscii, "Initializing...\n"), "\n"))
 	}
 
+	// Render the correct tab.
 	switch t.activeTab {
 	case functionsTab:
 		t.viewport.SetContent(t.functionCallsView(time.Now()))
@@ -199,7 +214,8 @@ func (t *TUI) View() string {
 		t.viewport.SetContent(t.logs.String())
 	}
 
-	// Tail the output, unless the user has tried to scroll back.
+	// Tail the output, unless the user has tried
+	// to scroll back (e.g. with arrow keys).
 	if t.tail {
 		t.viewport.GotoBottom()
 	}
@@ -211,6 +227,10 @@ func (t *TUI) View() string {
 }
 
 func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
+	// ObserveRequest is part of the FunctionCallObserver interface.
+	// It's called after a request has been received from the Dispatch API,
+	// and before the request has been sent to the local application.
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -267,10 +287,6 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 			parent.children = map[DispatchID]struct{}{}
 		}
 		if _, ok := parent.children[id]; !ok {
-			if n, ok := parent.calls[req.Function]; ok && n > 0 {
-				parent.calls[req.Function] = n - 1
-				parent.outstandingCalls--
-			}
 			parent.children[id] = struct{}{}
 			parent.orderedChildren = append(parent.orderedChildren, id)
 		}
@@ -279,6 +295,10 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 }
 
 func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Response, res *sdkv1.RunResponse) {
+	// ObserveResponse is part of the FunctionCallObserver interface.
+	// It's called after a response has been received from the local
+	// application, and before the response has been sent to Dispatch.
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -294,7 +314,9 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 		if res.Status != sdkv1.Status_STATUS_OK {
 			n.failures++
 		}
-		// TODO: wipe in-memory state if INCOMPATIBLE_STATE status is observed?
+
+		// FIXME: wipe in-memory state if INCOMPATIBLE_STATE status is observed
+
 		switch d := res.Directive.(type) {
 		case *sdkv1.RunResponse_Exit:
 			n.status = res.Status
@@ -302,15 +324,8 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 			if d.Exit.TailCall != nil {
 				n = node{function: d.Exit.TailCall.Function} // reset
 			}
-			// TODO: show result (output value / error)?
 		case *sdkv1.RunResponse_Poll:
-			if n.calls == nil {
-				n.calls = map[string]int{}
-			}
-			for _, call := range d.Poll.Calls {
-				n.calls[call.Function]++
-				n.outstandingCalls++
-			}
+			// noop for now
 		}
 	} else if httpRes != nil {
 		n.failures++
@@ -329,21 +344,20 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 }
 
 func (t *TUI) Write(b []byte) (int, error) {
-	t.logsMu.Lock()
-	defer t.logsMu.Unlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
 	return t.logs.Write(b)
 }
 
 func (t *TUI) Read(b []byte) (int, error) {
-	t.logsMu.Lock()
-	defer t.logsMu.Unlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
 	return t.logs.Read(b)
 }
 
 func (t *TUI) parseID(id string) DispatchID {
-	// TODO: [16]byte
 	return DispatchID(id)
 }
 
@@ -397,6 +411,7 @@ func (t *TUI) functionCallsView(now time.Time) string {
 			b.WriteByte('\n')
 		}
 
+		// Buffer rows in memory.
 		t.buildRows(now, rootID, nil, &rows)
 
 		// Dynamically size the function call tree column.
@@ -406,6 +421,7 @@ func (t *TUI) functionCallsView(now time.Time) string {
 		}
 		functionColumnWidth := max(9, min(50, maxFunctionWidth))
 
+		// Render the table.
 		b.WriteString(tableHeaderView(functionColumnWidth))
 		for i := range rows.rows {
 			b.WriteString(tableRowView(&rows.rows[i], functionColumnWidth))
@@ -439,10 +455,10 @@ func (b *rowBuffer) reset() {
 
 func tableHeaderView(functionColumnWidth int) string {
 	return whitespace(2) +
-		left(functionColumnWidth, headerStyle.Render("Function")) + " " +
-		right(8, headerStyle.Render("Attempts")) + " " +
-		right(10, headerStyle.Render("Duration")) + " " +
-		left(30, headerStyle.Render("Status")) +
+		left(functionColumnWidth, tableHeaderStyle.Render("Function")) + " " +
+		right(8, tableHeaderStyle.Render("Attempts")) + " " +
+		right(10, tableHeaderStyle.Render("Duration")) + " " +
+		left(30, tableHeaderStyle.Render("Status")) +
 		"\n"
 }
 
@@ -465,10 +481,11 @@ func tableRowView(r *row, functionColumnWidth int) string {
 }
 
 func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBuffer) {
-	// t.mu must be locked.
+	// t.mu must be locked!
+
 	n := t.nodes[id]
 
-	// Print the tree prefix.
+	// Render the tree prefix.
 	var function strings.Builder
 	for i, last := range isLast {
 		var s string
@@ -511,15 +528,14 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 		pending = true
 	}
 
-	// Render the function call.
+	// Render the function name.
 	if n.function != "" {
 		function.WriteString(style.Render(n.function))
 	} else {
 		function.WriteString(style.Render("(?)"))
 	}
 
-	// TODO: parse/show arguments?
-
+	// Render the status.
 	var status string
 	if n.running {
 		status = "Running"
@@ -561,22 +577,6 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 		last := i == len(n.orderedChildren)-1
 		t.buildRows(now, id, append(isLast[:len(isLast):len(isLast)], last), rows)
 	}
-
-	// FIXME: hard to render calls before we know the Dispatch ID..
-	//  We either need correlation ID on RunRequest, or dispatch_ids on
-	//  PollResult after making calls
-	//
-	// for function, count := range n.calls {
-	// 	for i := 0; i < count; i++ {
-	// 		for i := 0; i < childIndent; i++ {
-	// 			b.WriteByte(' ')
-	// 		}
-	// 		b.WriteString(pendingStyle.Render(function))
-	// 		b.WriteByte(' ')
-	// 		b.WriteString(spinnerStyle.Render(t.spinner.View()))
-	// 		b.WriteByte('\n')
-	// 	}
-	// }
 }
 
 func statusString(status sdkv1.Status) string {
