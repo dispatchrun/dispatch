@@ -79,10 +79,11 @@ const (
 const tabCount = 2
 
 type node struct {
-	function string
-	failures int
-	status   sdkv1.Status
-	error    error
+	function  string
+	failures  int
+	responses int
+	status    sdkv1.Status
+	error     error
 
 	done     bool
 	doneTime time.Time
@@ -282,6 +283,8 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	id := t.parseID(req.DispatchId)
 	n := t.nodes[id]
 
+	n.responses++
+
 	if res != nil {
 		if res.Status != sdkv1.Status_STATUS_OK {
 			n.failures++
@@ -462,7 +465,9 @@ func (t *TUI) renderTo(now time.Time, id DispatchID, isLast []bool, b *strings.B
 		status = n.error.Error()
 	} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
 		status = statusString(n.status)
-	} else if pending {
+	} else if pending && n.responses > 0 {
+		status = "Suspended"
+	} else {
 		status = "Pending"
 	}
 	status = style.Render(status)
