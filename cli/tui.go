@@ -403,9 +403,16 @@ func (t *TUI) functionCallsView(now time.Time) string {
 
 		t.buildRows(now, rootID, nil, &rows)
 
-		b.WriteString(tableHeaderView())
+		// Dynamically size the function call tree column.
+		maxFunctionWidth := 0
 		for i := range rows.rows {
-			b.WriteString(tableRowView(&rows.rows[i]))
+			maxFunctionWidth = max(maxFunctionWidth, ansi.PrintableRuneWidth(rows.rows[i].function))
+		}
+		functionColumnWidth := max(9, min(50, maxFunctionWidth))
+
+		b.WriteString(tableHeaderView(functionColumnWidth))
+		for i := range rows.rows {
+			b.WriteString(tableRowView(&rows.rows[i], functionColumnWidth))
 		}
 
 		rows.reset()
@@ -434,16 +441,16 @@ func (b *rowBuffer) reset() {
 	b.rows = b.rows[:0]
 }
 
-func tableHeaderView() string {
+func tableHeaderView(functionColumnWidth int) string {
 	return whitespace(2) +
-		left(30, headerStyle.Render("Function")) + " " +
+		left(functionColumnWidth, headerStyle.Render("Function")) + " " +
 		right(8, headerStyle.Render("Attempts")) + " " +
 		right(10, headerStyle.Render("Duration")) + " " +
 		left(30, headerStyle.Render("Status")) +
 		"\n"
 }
 
-func tableRowView(r *row) string {
+func tableRowView(r *row, functionColumnWidth int) string {
 	attemptsStr := strconv.Itoa(r.attempts)
 
 	var elapsedStr string
@@ -454,7 +461,7 @@ func tableRowView(r *row) string {
 	}
 
 	return left(2, r.spinner) +
-		left(30, r.function) + " " +
+		left(functionColumnWidth, r.function) + " " +
 		right(8, attemptsStr) + " " +
 		right(10, elapsedStr) + " " +
 		left(30, r.status) +
