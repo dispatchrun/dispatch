@@ -147,7 +147,8 @@ func (t *TUI) Init() tea.Cmd {
 
 func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Here we handle "messages" such as key presses, window size changes,
-	// refresh ticks, etc.
+	// refresh ticks, etc. Note that the TUI view is updated after messages
+	// have been processed.
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 	switch msg := msg.(type) {
@@ -158,7 +159,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.spinner, cmd = t.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 	case tea.WindowSizeMsg:
-		// Initialized or resize the viewport.
+		// Initialize or resize the viewport.
 		t.windowHeight = msg.Height
 		height := msg.Height - 1 // reserve space for help
 		width := msg.Width
@@ -182,7 +183,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.tail = false
 		}
 	}
-	// Forward messages to the viewport, e.g. for scroll back support.
+	// Forward messages to the viewport, e.g. for scroll-back support.
 	t.viewport, cmd = t.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 	return t, tea.Batch(cmds...)
@@ -311,11 +312,14 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	n.running = false
 
 	if res != nil {
-		if res.Status != sdkv1.Status_STATUS_OK {
+		switch res.Status {
+		case sdkv1.Status_STATUS_OK:
+			// noop
+		case sdkv1.Status_STATUS_INCOMPATIBLE_STATE:
+			n = node{function: n.function} // reset
+		default:
 			n.failures++
 		}
-
-		// FIXME: wipe in-memory state if INCOMPATIBLE_STATE status is observed
 
 		switch d := res.Directive.(type) {
 		case *sdkv1.RunResponse_Exit:
@@ -325,7 +329,7 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 				n = node{function: d.Exit.TailCall.Function} // reset
 			}
 		case *sdkv1.RunResponse_Poll:
-			// noop for now
+			// noop
 		}
 	} else if httpRes != nil {
 		n.failures++
