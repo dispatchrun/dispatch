@@ -561,7 +561,15 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 		spinner = spinnerStyle.Render(t.spinner.View())
 	}
 
-	attempts := n.failures + 1
+	attempts := n.failures
+	if n.running {
+		attempts++
+	} else if n.done && n.status == sdkv1.Status_STATUS_OK {
+		attempts++
+	} else if n.responses > n.failures {
+		attempts++
+	}
+	attempts = max(attempts, 1)
 
 	var elapsed time.Duration
 	if !n.creationTime.IsZero() {
