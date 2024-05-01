@@ -23,12 +23,6 @@ import (
 const refreshInterval = time.Second / 2
 
 var (
-	grayColor   = lipgloss.Color("#7D7D7D")
-	whiteColor  = lipgloss.Color("#FFFFFF")
-	redColor    = lipgloss.Color("#FF0000")
-	greenColor  = lipgloss.Color("#00FF00")
-	yellowColor = lipgloss.Color("#FFAA00")
-
 	pendingStyle = lipgloss.NewStyle().Foreground(grayColor)
 	retryStyle   = lipgloss.NewStyle().Foreground(yellowColor)
 	errorStyle   = lipgloss.NewStyle().Foreground(redColor)
@@ -39,7 +33,7 @@ var (
 	treeStyle    = lipgloss.NewStyle().Foreground(grayColor)
 
 	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
-	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
+	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(grayColor)
 
 	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
 
