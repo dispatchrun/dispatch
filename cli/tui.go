@@ -475,10 +475,10 @@ func (t *TUI) functionCallsView(now time.Time) string {
 }
 
 type row struct {
-	icon     string
+	function string
 	attempts int
 	elapsed  time.Duration
-	function string
+	icon     string
 	status   string
 }
 
@@ -630,7 +630,13 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 		elapsed = tail.Sub(n.creationTime).Truncate(time.Millisecond)
 	}
 
-	rows.add(row{icon, attempts, elapsed, function.String(), status})
+	rows.add(row{
+		function: function.String(),
+		attempts: attempts,
+		elapsed:  elapsed,
+		icon:     icon,
+		status:   status,
+	})
 
 	// Recursively render children.
 	for i, id := range n.orderedChildren {
