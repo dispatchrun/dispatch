@@ -495,12 +495,13 @@ func (b *rowBuffer) reset() {
 }
 
 func tableHeaderView(functionColumnWidth int) string {
-	return whitespace(2) +
-		left(functionColumnWidth, tableHeaderStyle.Render("Function")) + " " +
-		right(8, tableHeaderStyle.Render("Attempts")) + " " +
-		right(10, tableHeaderStyle.Render("Duration")) + " " +
-		left(40, tableHeaderStyle.Render("Status")) +
-		"\n"
+	return join(
+		left(functionColumnWidth, tableHeaderStyle.Render("Function")),
+		right(8, tableHeaderStyle.Render("Attempts")),
+		right(10, tableHeaderStyle.Render("Duration")),
+		left(1, pendingIcon),
+		left(40, tableHeaderStyle.Render("Status")),
+	)
 }
 
 func tableRowView(r *row, functionColumnWidth int) string {
@@ -513,12 +514,25 @@ func tableRowView(r *row, functionColumnWidth int) string {
 		elapsedStr = "?"
 	}
 
-	return left(2, r.icon) +
-		left(functionColumnWidth, r.function) + " " +
-		right(8, attemptsStr) + " " +
-		right(10, elapsedStr) + " " +
-		left(40, r.status) +
-		"\n"
+	return join(
+		left(functionColumnWidth, r.function),
+		right(8, attemptsStr),
+		right(10, elapsedStr),
+		left(1, r.icon),
+		left(40, r.status),
+	)
+}
+
+func join(rows ...string) string {
+	var b strings.Builder
+	for i, row := range rows {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(row)
+	}
+	b.WriteByte('\n')
+	return b.String()
 }
 
 func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBuffer) {
