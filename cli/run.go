@@ -312,12 +312,11 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			}
 
 			if err != nil {
-				if r, ok := logWriter.(io.Reader); ok {
-					// Dump any buffered logs to stderr in this case.
-					time.Sleep(100 * time.Millisecond)
-					_, _ = io.Copy(os.Stderr, r)
-				}
+				dumpLogs(logWriter)
 				return fmt.Errorf("failed to invoke command '%s': %v", strings.Join(args, " "), err)
+			} else if !signaled && successfulPolls == 0 {
+				dumpLogs(logWriter)
+				return fmt.Errorf("command '%s' exited unexpectedly", strings.Join(args, " "))
 			}
 			return nil
 		},
@@ -328,6 +327,14 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 	cmd.Flags().BoolVarP(&Verbose, "verbose", "", false, "Enable verbose logging")
 
 	return cmd
+}
+
+func dumpLogs(logWriter io.Writer) {
+	if r, ok := logWriter.(io.Reader); ok {
+		time.Sleep(100 * time.Millisecond)
+		_, _ = io.Copy(os.Stderr, r)
+		_, _ = os.Stderr.Write([]byte{'\n'})
+	}
 }
 
 func poll(ctx context.Context, client *http.Client, url string) (string, *http.Response, error) {
