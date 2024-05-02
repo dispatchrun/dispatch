@@ -50,7 +50,7 @@ var (
 type DispatchID string
 
 type TUI struct {
-	mu sync.Mutex
+	ticks uint64
 
 	// Storage for the function call hierarchies. Each function call
 	// has a "root" node, and nodes can have zero or more children.
@@ -73,6 +73,8 @@ type TUI struct {
 	activeTab    tab
 	tail         bool
 	windowHeight int
+
+	mu sync.Mutex
 }
 
 type tab int
@@ -153,6 +155,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tickMsg:
+		t.ticks++
 		cmds = append(cmds, tick())
 	case spinner.TickMsg:
 		// Forward this tick to the spinner model so that it updates.
@@ -191,20 +194,26 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // https://patorjk.com/software/taag/ (Ogre)
 var dispatchAscii = []string{
-	logoStyle.Render(`     _ _                 _       _`),
-	logoStyle.Render(`  __| (_)___ _ __   __ _| |_ ___| |__`),
-	logoStyle.Render(` / _' | / __| '_ \ / _' | __/ __| '_ \`),
-	logoStyle.Render(`| (_| | \__ \ |_) | (_| | || (__| | | |`) + logoUnderscoreStyle.Render(" _____"),
-	logoStyle.Render(` \__,_|_|___/ .__/ \__,_|\__\___|_| |_|`) + logoUnderscoreStyle.Render("|_____|"),
-	logoStyle.Render(`            |_|`),
-	"",
+	`     _ _                 _       _`,
+	`  __| (_)___ _ __   __ _| |_ ___| |__`,
+	` / _' | / __| '_ \ / _' | __/ __| '_ \`,
+	`| (_| | \__ \ |_) | (_| | || (__| | | |`,
+	` \__,_|_|___/ .__/ \__,_|\__\___|_| |_|`,
+	`            |_|`,
 }
+
+var underscoreAscii = []string{
+	" _____",
+	"|_____|",
+}
+
+const underscoreIndex = 3
 
 var minWindowHeight = len(dispatchAscii) + 3
 
 func (t *TUI) View() string {
 	if !t.ready {
-		return statusStyle.Render(strings.Join(append(dispatchAscii, "Initializing...\n"), "\n"))
+		return t.logoView() + statusStyle.Render("Initializing...\n")
 	}
 
 	// Render the correct tab.
@@ -225,6 +234,23 @@ func (t *TUI) View() string {
 	t.viewport.Height = max(minWindowHeight, min(t.viewport.TotalLineCount()+1, t.windowHeight-1))
 
 	return t.viewport.View() + "\n" + t.help.ShortHelpView(t.keys)
+}
+
+func (t *TUI) logoView() string {
+	showUnderscore := t.ticks%2 == 0
+
+	var b strings.Builder
+	for i, line := range dispatchAscii {
+		b.WriteString(logoStyle.Render(line))
+		if showUnderscore {
+			if i >= underscoreIndex && i-underscoreIndex < len(underscoreAscii) {
+				b.WriteString(logoUnderscoreStyle.Render(underscoreAscii[i-underscoreIndex]))
+			}
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteByte('\n')
+	return b.String()
 }
 
 func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
@@ -412,7 +438,7 @@ func (t *TUI) functionCallsView(now time.Time) string {
 	defer t.mu.Unlock()
 
 	if len(t.roots) == 0 {
-		return statusStyle.Render(strings.Join(append(dispatchAscii, "Waiting for function calls...\n"), "\n"))
+		return t.logoView() + statusStyle.Render("Waiting for function calls...\n")
 	}
 
 	// Render function calls in a hybrid table/tree view.
