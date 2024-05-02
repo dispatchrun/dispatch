@@ -13,14 +13,16 @@ import (
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/ansi"
 )
 
-const refreshInterval = time.Second / 2
+const (
+	refreshInterval         = time.Second / 10
+	underscoreBlinkInterval = time.Second / 2
+)
 
 var (
 	// Style for the viewport that contains everything.
@@ -43,8 +45,13 @@ var (
 	okStyle      = lipgloss.NewStyle().Foreground(greenColor)
 
 	// Styles for other components inside the table.
-	spinnerStyle = lipgloss.NewStyle().Foreground(grayColor)
-	treeStyle    = lipgloss.NewStyle().Foreground(grayColor)
+	treeStyle = lipgloss.NewStyle().Foreground(grayColor)
+)
+
+const (
+	pendingIcon = "•" // U+2022
+	successIcon = "✔" // U+2714
+	failureIcon = "✗" // U+2718
 )
 
 type DispatchID string
@@ -65,7 +72,6 @@ type TUI struct {
 
 	// TUI models / options / flags, used to display the information
 	// above.
-	spinner      spinner.Model
 	viewport     viewport.Model
 	help         help.Model
 	ready        bool
@@ -95,8 +101,9 @@ type node struct {
 	status sdkv1.Status
 	error  error
 
-	running bool
-	done    bool
+	running   bool
+	suspended bool
+	done      bool
 
 	creationTime   time.Time
 	expirationTime time.Time
@@ -122,7 +129,6 @@ func tick() tea.Cmd {
 }
 
 func (t *TUI) Init() tea.Cmd {
-	t.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
 	t.help = help.New()
 	// Note that t.viewport is initialized on the first tea.WindowSizeMsg.
 
@@ -144,7 +150,7 @@ func (t *TUI) Init() tea.Cmd {
 	t.tail = true
 	t.activeTab = functionsTab
 
-	return tea.Batch(t.spinner.Tick, tick())
+	return tick()
 }
 
 func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -157,10 +163,6 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		t.ticks++
 		cmds = append(cmds, tick())
-	case spinner.TickMsg:
-		// Forward this tick to the spinner model so that it updates.
-		t.spinner, cmd = t.spinner.Update(msg)
-		cmds = append(cmds, cmd)
 	case tea.WindowSizeMsg:
 		// Initialize or resize the viewport.
 		t.windowHeight = msg.Height
@@ -237,7 +239,7 @@ func (t *TUI) View() string {
 }
 
 func (t *TUI) logoView() string {
-	showUnderscore := t.ticks%2 == 0
+	showUnderscore := (t.ticks/uint64(underscoreBlinkInterval/refreshInterval))%2 == 0
 
 	var b strings.Builder
 	for i, line := range dispatchAscii {
@@ -290,6 +292,7 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 	}
 	n.function = req.Function
 	n.running = true
+	n.suspended = false
 	if req.CreationTime != nil {
 		n.creationTime = req.CreationTime.AsTime()
 	}
@@ -363,7 +366,7 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 				}
 			}
 		case *sdkv1.RunResponse_Poll:
-			// noop
+			n.suspended = true
 		}
 	} else if httpRes != nil {
 		n.failures++
@@ -472,7 +475,7 @@ func (t *TUI) functionCallsView(now time.Time) string {
 }
 
 type row struct {
-	spinner  string
+	icon     string
 	attempts int
 	elapsed  time.Duration
 	function string
@@ -510,7 +513,7 @@ func tableRowView(r *row, functionColumnWidth int) string {
 		elapsedStr = "?"
 	}
 
-	return left(2, r.spinner) +
+	return left(2, r.icon) +
 		left(functionColumnWidth, r.function) + " " +
 		right(8, attemptsStr) + " " +
 		right(10, elapsedStr) + " " +
@@ -546,24 +549,27 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 
 	// Determine what to print, based on the status of the function call.
 	var style lipgloss.Style
-	pending := false
-	if n.done {
+	icon := pendingIcon
+	if n.running || n.suspended {
+		style = pendingStyle
+	} else if n.done {
 		if n.status == sdkv1.Status_STATUS_OK {
 			style = okStyle
+			icon = successIcon
 		} else {
 			style = errorStyle
+			icon = failureIcon
 		}
 	} else if !n.expirationTime.IsZero() && n.expirationTime.Before(now) {
 		n.error = errors.New("Expired")
 		style = errorStyle
 		n.done = true
 		n.doneTime = n.expirationTime
+		icon = failureIcon
+	} else if n.failures > 0 {
+		style = retryStyle
 	} else {
 		style = pendingStyle
-		if n.failures > 0 {
-			style = retryStyle
-		}
-		pending = true
 	}
 
 	// Render the function name.
@@ -573,27 +579,21 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 		function.WriteString(style.Render("(?)"))
 	}
 
-	// Render the status.
+	// Render the status and icon.
 	var status string
 	if n.running {
 		status = "Running"
-		style = pendingStyle
+	} else if n.suspended {
+		status = "Suspended"
 	} else if n.error != nil {
 		status = n.error.Error()
 	} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
 		status = statusString(n.status)
-	} else if pending && n.responses > 0 {
-		status = "Suspended"
-		style = pendingStyle
 	} else {
 		status = "Pending"
 	}
 	status = style.Render(status)
-
-	var spinner string
-	if pending {
-		spinner = spinnerStyle.Render(t.spinner.View())
-	}
+	icon = style.Render(icon)
 
 	attempts := n.failures
 	if n.running {
@@ -616,7 +616,7 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 		elapsed = tail.Sub(n.creationTime).Truncate(time.Millisecond)
 	}
 
-	rows.add(row{spinner, attempts, elapsed, function.String(), status})
+	rows.add(row{icon, attempts, elapsed, function.String(), status})
 
 	// Recursively render children.
 	for i, id := range n.orderedChildren {
