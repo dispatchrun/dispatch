@@ -327,6 +327,14 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 			n.done = terminalStatus(res.Status)
 			if d.Exit.TailCall != nil {
 				n = node{function: d.Exit.TailCall.Function} // reset
+			} else if res.Status != sdkv1.Status_STATUS_OK && d.Exit.Result != nil {
+				if e := d.Exit.Result.Error; e != nil && e.Type != "" {
+					if e.Message == "" {
+						n.error = fmt.Errorf("%s", e.Type)
+					} else {
+						n.error = fmt.Errorf("%s: %s", e.Type, e.Message)
+					}
+				}
 			}
 		case *sdkv1.RunResponse_Poll:
 			// noop
@@ -462,7 +470,7 @@ func tableHeaderView(functionColumnWidth int) string {
 		left(functionColumnWidth, tableHeaderStyle.Render("Function")) + " " +
 		right(8, tableHeaderStyle.Render("Attempts")) + " " +
 		right(10, tableHeaderStyle.Render("Duration")) + " " +
-		left(30, tableHeaderStyle.Render("Status")) +
+		left(40, tableHeaderStyle.Render("Status")) +
 		"\n"
 }
 
@@ -480,7 +488,7 @@ func tableRowView(r *row, functionColumnWidth int) string {
 		left(functionColumnWidth, r.function) + " " +
 		right(8, attemptsStr) + " " +
 		right(10, elapsedStr) + " " +
-		left(30, r.status) +
+		left(40, r.status) +
 		"\n"
 }
 
