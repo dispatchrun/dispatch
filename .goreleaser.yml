@@ -40,14 +40,14 @@ brews:
 
     homepage: "https://dispatch.run"
 
-    description: "Dispatch"
+    description: "A platform for developing scalable & reliable distributed systems."
 
-    license: "Apache 2.0"
+    license: "Apache-2.0"
 
     skip_upload: false
 
     test: |
-      system "#{bin}/dispatch --version"
+      system "#{bin}/dispatch", "--version"
 
     repository:
       owner: dispatchrun
