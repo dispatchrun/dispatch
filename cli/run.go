@@ -270,8 +270,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				}
 			}()
 
-			err = cmd.Start()
-			if err != nil {
+			if err = cmd.Start(); err != nil {
 				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
 			}
 
