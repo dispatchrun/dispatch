@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/stealthrocket/dispatch/cli"
+	"github.com/dispatchrun/dispatch/cli"
 )
 
 func main() {
