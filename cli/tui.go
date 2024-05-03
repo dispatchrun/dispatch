@@ -32,9 +32,6 @@ var (
 	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
 	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
 
-	// Style for the line under the logo as the CLI is initializing/waiting.
-	statusStyle = lipgloss.NewStyle().Foreground(grayColor)
-
 	// Style for the table of function calls.
 	tableHeaderStyle = lipgloss.NewStyle().Foreground(whiteColor).Bold(true)
 
@@ -72,13 +69,14 @@ type TUI struct {
 
 	// TUI models / options / flags, used to display the information
 	// above.
-	viewport     viewport.Model
-	help         help.Model
-	ready        bool
-	keys         []key.Binding
-	activeTab    tab
-	tail         bool
-	windowHeight int
+	viewport         viewport.Model
+	help             help.Model
+	ready            bool
+	activeTab        tab
+	logHelp          string
+	functionCallHelp string
+	tail             bool
+	windowHeight     int
 
 	mu sync.Mutex
 }
@@ -91,6 +89,21 @@ const (
 )
 
 const tabCount = 2
+
+var keyMap = []key.Binding{
+	key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "switch tabs"),
+	),
+	key.NewBinding(
+		key.WithKeys("t"),
+		key.WithHelp("t", "tail"),
+	),
+	key.NewBinding(
+		key.WithKeys("q", "ctrl+c", "esc"),
+		key.WithHelp("q", "quit"),
+	),
+}
 
 type node struct {
 	function string
@@ -132,23 +145,13 @@ func (t *TUI) Init() tea.Cmd {
 	t.help = help.New()
 	// Note that t.viewport is initialized on the first tea.WindowSizeMsg.
 
-	t.keys = []key.Binding{
-		key.NewBinding(
-			key.WithKeys("tab"),
-			key.WithHelp("tab", "switch tabs"),
-		),
-		key.NewBinding(
-			key.WithKeys("t"),
-			key.WithHelp("t", "tail"),
-		),
-		key.NewBinding(
-			key.WithKeys("q", "ctrl+c", "esc"),
-			key.WithHelp("q", "quit"),
-		),
-	}
-
 	t.tail = true
 	t.activeTab = functionsTab
+
+	// Only show tab+quit in default function call view.
+	// Show tab+tail+quit when viewing logs.
+	t.logHelp = t.help.ShortHelpView(keyMap)
+	t.functionCallHelp = t.help.ShortHelpView(append(keyMap[0:1:1], keyMap[len(keyMap)-1]))
 
 	return tick()
 }
@@ -166,7 +169,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		// Initialize or resize the viewport.
 		t.windowHeight = msg.Height
-		height := msg.Height - 1 // reserve space for help
+		height := msg.Height - 1 // reserve space for status bar
 		width := msg.Width
 		if !t.ready {
 			t.viewport = viewport.New(width, height)
@@ -211,20 +214,44 @@ var underscoreAscii = []string{
 
 const underscoreIndex = 3
 
-var minWindowHeight = len(dispatchAscii) + 3
-
 func (t *TUI) View() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var viewportContent string
+	var statusBarContent string
+	helpContent := t.functionCallHelp
 	if !t.ready {
-		return t.logoView() + statusStyle.Render("Initializing...\n")
+		viewportContent = t.logoView()
+		statusBarContent = "Initializing..."
+	} else {
+		switch t.activeTab {
+		case functionsTab:
+			if len(t.roots) == 0 {
+				viewportContent = t.logoView()
+				statusBarContent = "Waiting for function calls..."
+			} else {
+				viewportContent = t.functionCallsView(time.Now())
+				if len(t.nodes) == 1 {
+					statusBarContent = "1 total function call"
+				} else {
+					statusBarContent = fmt.Sprintf("%d total function calls", len(t.nodes))
+				}
+				var inflightCount int
+				for _, n := range t.nodes {
+					if !n.done {
+						inflightCount++
+					}
+				}
+				statusBarContent += fmt.Sprintf(", %d in-flight", inflightCount)
+			}
+		case logsTab:
+			viewportContent = t.logs.String()
+			helpContent = t.logHelp
+		}
 	}
 
-	// Render the correct tab.
-	switch t.activeTab {
-	case functionsTab:
-		t.viewport.SetContent(t.functionCallsView(time.Now()))
-	case logsTab:
-		t.viewport.SetContent(t.logs.String())
-	}
+	t.viewport.SetContent(viewportContent)
 
 	// Tail the output, unless the user has tried
 	// to scroll back (e.g. with arrow keys).
@@ -232,10 +259,20 @@ func (t *TUI) View() string {
 		t.viewport.GotoBottom()
 	}
 
-	// Shrink the viewport so it contains the content and help line only.
-	t.viewport.Height = max(minWindowHeight, min(t.viewport.TotalLineCount()+1, t.windowHeight-1))
+	// Shrink the viewport so it contains the content and status bar only.
+	t.viewport.Height = min(t.viewport.TotalLineCount()+1, t.windowHeight-1)
 
-	return t.viewport.View() + "\n" + t.help.ShortHelpView(t.keys)
+	var b strings.Builder
+	b.WriteString(t.viewport.View())
+	b.WriteByte('\n')
+	if statusBarContent != "" {
+		b.WriteString("  ")
+		b.WriteString(statusBarContent)
+		b.WriteString("\n\n")
+	}
+	b.WriteString("  ")
+	b.WriteString(helpContent)
+	return b.String()
 }
 
 func (t *TUI) logoView() string {
@@ -251,7 +288,6 @@ func (t *TUI) logoView() string {
 		}
 		b.WriteByte('\n')
 	}
-	b.WriteByte('\n')
 	return b.String()
 }
 
@@ -412,7 +448,7 @@ func padding(width int, s string) int {
 
 func truncate(width int, s string) string {
 	var truncated bool
-	for ansi.PrintableRuneWidth(s) > width {
+	for len(s) > 0 && ansi.PrintableRuneWidth(s) > width {
 		s = s[:len(s)-1]
 		truncated = true
 	}
@@ -437,13 +473,6 @@ func left(width int, s string) string {
 }
 
 func (t *TUI) functionCallsView(now time.Time) string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if len(t.roots) == 0 {
-		return t.logoView() + statusStyle.Render("Waiting for function calls...\n")
-	}
-
 	// Render function calls in a hybrid table/tree view.
 	var b strings.Builder
 	var rows rowBuffer
@@ -460,7 +489,7 @@ func (t *TUI) functionCallsView(now time.Time) string {
 		for i := range rows.rows {
 			maxFunctionWidth = max(maxFunctionWidth, ansi.PrintableRuneWidth(rows.rows[i].function))
 		}
-		functionColumnWidth := max(20, min(50, maxFunctionWidth))
+		functionColumnWidth := max(9, min(50, maxFunctionWidth))
 
 		// Render the table.
 		b.WriteString(tableHeaderView(functionColumnWidth))
@@ -470,7 +499,6 @@ func (t *TUI) functionCallsView(now time.Time) string {
 
 		rows.reset()
 	}
-
 	return b.String()
 }
 
