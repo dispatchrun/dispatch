@@ -489,7 +489,7 @@ func (t *TUI) functionCallsView(now time.Time) string {
 		for i := range rows.rows {
 			maxFunctionWidth = max(maxFunctionWidth, ansi.PrintableRuneWidth(rows.rows[i].function))
 		}
-		functionColumnWidth := max(20, min(50, maxFunctionWidth))
+		functionColumnWidth := max(9, min(50, maxFunctionWidth))
 
 		// Render the table.
 		b.WriteString(tableHeaderView(functionColumnWidth))
