@@ -9,18 +9,18 @@
 Install with Homebrew on macOS:
 
 ```console
-brew tap stealthrocket/dispatch
+brew tap dispatchrun/dispatch
 brew install dispatch
 ```
 
 Install with Go:
 
 ```console
-go install github.com/stealthrocket/dispatch@latest
+go install github.com/dispatchrun/dispatch@latest
 ```
 
 Alternatively, you can download the latest `dispatch` binary from the
-[Releases](https://github.com/stealthrocket/dispatch/releases) page.
+[Releases](https://github.com/dispatchrun/dispatch/releases) page.
 
 ### Create an Account
 
