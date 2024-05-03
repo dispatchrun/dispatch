@@ -91,40 +91,41 @@ previous run.`, defaultEndpoint),
 			// stdout/stderr aren't redirected.
 			var tui *TUI
 			var logWriter io.Writer = os.Stderr
+			var observer FunctionCallObserver
 			if isTerminal(os.Stdin) && isTerminal(os.Stdout) && isTerminal(os.Stderr) {
 				tui = &TUI{}
 				logWriter = tui
+				observer = tui
 			}
 
-			if Verbose || tui != nil {
-				level := slog.LevelInfo
-				if Verbose {
-					level = slog.LevelDebug
-				}
-				prefix := []byte(pad("dispatch", prefixWidth) + " | ")
-				if Color {
-					prefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
-				}
-				slog.SetDefault(slog.New(&slogHandler{
-					stream: &prefixLogWriter{
-						stream: logWriter,
-						prefix: prefix,
-					},
-					level: level,
-				}))
+			// Add a prefix to Dispatch logs.
+			level := slog.LevelInfo
+			if Verbose {
+				level = slog.LevelDebug
 			}
+			dispatchPrefix := []byte(pad("dispatch", prefixWidth) + " | ")
+			if Color {
+				dispatchPrefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
+			}
+			slog.SetDefault(slog.New(&slogHandler{
+				stream: &prefixLogWriter{
+					stream: logWriter,
+					prefix: dispatchPrefix,
+				},
+				level: level,
+			}))
 
 			if BridgeSession == "" {
 				BridgeSession = uuid.New().String()
 			}
 
-			if Verbose || tui != nil {
-				slog.Info("starting session", "session_id", BridgeSession)
-			} else {
+			if !Verbose && tui == nil {
 				dialog(`Starting Dispatch session: %v
 
 Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			}
+
+			slog.Info("starting session", "session_id", BridgeSession)
 
 			// Execute the command, forwarding the environment and
 			// setting the necessary extra DISPATCH_* variables.
@@ -132,28 +133,20 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 
 			cmd.Stdin = os.Stdin
 
-			// When verbose logging is enabled, pipe stdout/stderr streams
-			// through a writer that adds a prefix, so that it's easier
-			// to disambiguate Dispatch logs from the local application's logs.
-			var stdout io.ReadCloser
-			var stderr io.ReadCloser
-			if Verbose || tui != nil {
-				var err error
-				stdout, err = cmd.StdoutPipe()
-				if err != nil {
-					return fmt.Errorf("failed to create stdout pipe: %v", err)
-				}
-				defer stdout.Close()
-
-				stderr, err = cmd.StderrPipe()
-				if err != nil {
-					return fmt.Errorf("failed to create stderr pipe: %v", err)
-				}
-				defer stderr.Close()
-			} else {
-				cmd.Stdout = logWriter
-				cmd.Stderr = logWriter
+			// Pipe stdout/stderr streams through a writer that adds a prefix,
+			// so that it's easier to disambiguate Dispatch logs from the local
+			// application's logs.
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				return fmt.Errorf("failed to create stdout pipe: %v", err)
 			}
+			defer stdout.Close()
+
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				return fmt.Errorf("failed to create stderr pipe: %v", err)
+			}
+			defer stderr.Close()
 
 			// Pass on environment variables to the local application.
 			// Pass on the configured API key, and set a special endpoint
@@ -257,7 +250,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					go func() {
 						defer wg.Done()
 
-						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res, tui)
+						err := invoke(ctx, httpClient, bridgeSessionURL, requestID, res, observer)
 						res.Body.Close()
 						if err != nil {
 							if ctx.Err() == nil {
@@ -277,20 +270,18 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				}
 			}()
 
-			err := cmd.Start()
-			if err != nil {
+			if err = cmd.Start(); err != nil {
 				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
 			}
 
-			if Verbose || tui != nil {
-				prefix := []byte(pad(arg0, prefixWidth) + " | ")
-				suffix := []byte("\n")
-				if Color {
-					prefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
-				}
-				go printPrefixedLines(logWriter, stdout, prefix, suffix)
-				go printPrefixedLines(logWriter, stderr, prefix, suffix)
+			// Add a prefix to the local application's logs.
+			appPrefix := []byte(pad(arg0, prefixWidth) + " | ")
+			appSuffix := []byte("\n")
+			if Color {
+				appPrefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
 			}
+			go printPrefixedLines(logWriter, stdout, appPrefix, appSuffix)
+			go printPrefixedLines(logWriter, stderr, appPrefix, appSuffix)
 
 			err = cmd.Wait()
 
