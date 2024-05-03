@@ -279,7 +279,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			appPrefix := []byte(pad(arg0, prefixWidth) + " | ")
 			appSuffix := []byte("\n")
 			if Color {
-				dispatchPrefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
+				appPrefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
 			}
 			go printPrefixedLines(logWriter, stdout, appPrefix, appSuffix)
 			go printPrefixedLines(logWriter, stderr, appPrefix, appSuffix)
