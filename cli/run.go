@@ -497,7 +497,8 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 				logger.Info("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls))
 			}
 		default:
-			logger.Warn("function call failed", "function", runRequest.Function, "status", statusString(runResponse.Status))
+			err := runResponse.GetExit().GetResult().GetError()
+			logger.Warn("function call failed", "function", runRequest.Function, "status", statusString(runResponse.Status), "error_type", err.GetType(), "error_message", err.GetMessage())
 		}
 		if observer != nil {
 			observer.ObserveResponse(&runRequest, nil, endpointRes, &runResponse)
