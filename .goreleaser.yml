@@ -42,7 +42,7 @@ brews:
 
     description: "A platform for developing scalable & reliable distributed systems."
 
-    license: "Apache 2.0"
+    license: "Apache-2.0"
 
     skip_upload: false
 
