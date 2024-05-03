@@ -20,7 +20,7 @@ builds:
 
 release:
   github:
-    owner: stealthrocket
+    owner: dispatchrun
     name: dispatch
   draft: false
   prerelease: auto
@@ -30,7 +30,7 @@ changelog:
 
 brews:
   - name: dispatch
-    url_template: "https://github.com/stealthrocket/dispatch/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    url_template: "https://github.com/dispatchrun/dispatch/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
 
     commit_author:
       name: stealthrocket-bot
@@ -50,7 +50,7 @@ brews:
       system "#{bin}/dispatch --version"
 
     repository:
-      owner: stealthrocket
+      owner: dispatchrun
       name: homebrew-dispatch
       branch: main
       token: "{{ .Env.GH_TOKEN_HOMEBREW_DISPATCH }}"
