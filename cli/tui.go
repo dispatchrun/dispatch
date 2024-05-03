@@ -32,9 +32,6 @@ var (
 	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
 	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
 
-	// Style for the line under the logo as the CLI is initializing/waiting.
-	statusStyle = lipgloss.NewStyle().Foreground(grayColor)
-
 	// Style for the table of function calls.
 	tableHeaderStyle = lipgloss.NewStyle().Foreground(whiteColor).Bold(true)
 
