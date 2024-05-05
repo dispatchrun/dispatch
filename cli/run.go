@@ -110,14 +110,10 @@ previous run.`, defaultEndpoint),
 			if Verbose {
 				level = slog.LevelDebug
 			}
-			dispatchPrefix := []byte(pad("dispatch", prefixWidth) + " | ")
-			if Color {
-				dispatchPrefix = []byte(dispatchLogPrefixStyle.Render(pad("dispatch", prefixWidth)) + logPrefixSeparatorStyle.Render(" | "))
-			}
 			slog.SetDefault(slog.New(&slogHandler{
 				stream: &prefixLogWriter{
 					stream: logWriter,
-					prefix: dispatchPrefix,
+					prefix: []byte(dispatchLogPrefixStyle.Render(pad("dispatch", prefixWidth)) + logPrefixSeparatorStyle.Render(" | ")),
 				},
 				level: level,
 			}))
@@ -282,13 +278,9 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			}
 
 			// Add a prefix to the local application's logs.
-			appPrefix := []byte(pad(arg0, prefixWidth) + " | ")
-			appSuffix := []byte("\n")
-			if Color {
-				appPrefix = []byte(appLogPrefixStyle.Render(pad(arg0, prefixWidth)) + logPrefixSeparatorStyle.Render(" | "))
-			}
-			go printPrefixedLines(logWriter, stdout, appPrefix, appSuffix)
-			go printPrefixedLines(logWriter, stderr, appPrefix, appSuffix)
+			appLogPrefix := []byte(appLogPrefixStyle.Render(pad(arg0, prefixWidth)) + logPrefixSeparatorStyle.Render(" | "))
+			go printPrefixedLines(logWriter, stdout, appLogPrefix)
+			go printPrefixedLines(logWriter, stderr, appLogPrefix)
 
 			err = cmd.Wait()
 
@@ -598,7 +590,7 @@ func withoutEnv(env []string, prefixes ...string) []string {
 	})
 }
 
-func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {
+func printPrefixedLines(w io.Writer, r io.Reader, prefix []byte) {
 	scanner := bufio.NewScanner(r)
 	buffer := bytes.NewBuffer(nil)
 	buffer.Write(prefix)
@@ -606,7 +598,7 @@ func printPrefixedLines(w io.Writer, r io.Reader, prefix, suffix []byte) {
 	for scanner.Scan() {
 		buffer.Truncate(len(prefix))
 		buffer.Write(scanner.Bytes())
-		buffer.Write(suffix)
+		buffer.WriteByte('\n')
 		_, _ = w.Write(buffer.Bytes())
 	}
 }
