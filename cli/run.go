@@ -24,6 +24,7 @@ import (
 
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
@@ -46,6 +47,12 @@ var httpClient = &http.Client{
 	Transport: http.DefaultTransport,
 	Timeout:   pollTimeout,
 }
+
+var (
+	dispatchLogPrefixStyle  = lipgloss.NewStyle().Foreground(greenColor)
+	appLogPrefixStyle       = lipgloss.NewStyle().Foreground(magentaColor)
+	logPrefixSeparatorStyle = lipgloss.NewStyle().Foreground(grayColor)
+)
 
 func runCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -105,7 +112,7 @@ previous run.`, defaultEndpoint),
 			}
 			dispatchPrefix := []byte(pad("dispatch", prefixWidth) + " | ")
 			if Color {
-				dispatchPrefix = []byte("\033[32m" + pad("dispatch", prefixWidth) + " \033[90m|\033[0m ")
+				dispatchPrefix = []byte(dispatchLogPrefixStyle.Render(pad("dispatch", prefixWidth)) + logPrefixSeparatorStyle.Render(" | "))
 			}
 			slog.SetDefault(slog.New(&slogHandler{
 				stream: &prefixLogWriter{
@@ -278,7 +285,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			appPrefix := []byte(pad(arg0, prefixWidth) + " | ")
 			appSuffix := []byte("\n")
 			if Color {
-				appPrefix = []byte("\033[35m" + pad(arg0, prefixWidth) + " \033[90m|\033[0m ")
+				appPrefix = []byte(appLogPrefixStyle.Render(pad(arg0, prefixWidth)) + logPrefixSeparatorStyle.Render(" | "))
 			}
 			go printPrefixedLines(logWriter, stdout, appPrefix, appSuffix)
 			go printPrefixedLines(logWriter, stderr, appPrefix, appSuffix)
