@@ -4,8 +4,10 @@ import "github.com/charmbracelet/lipgloss"
 
 var (
 	defaultColor = lipgloss.NoColor{}
-	grayColor    = lipgloss.Color("#7D7D7D")
-	redColor     = lipgloss.Color("#FF0000")
-	greenColor   = lipgloss.Color("#00FF00")
-	yellowColor  = lipgloss.Color("#FFAA00")
+
+	// See https://www.hackitu.de/termcolor256/
+	grayColor   = lipgloss.ANSIColor(102)
+	redColor    = lipgloss.ANSIColor(124)
+	greenColor  = lipgloss.ANSIColor(34)
+	yellowColor = lipgloss.ANSIColor(142)
 )
