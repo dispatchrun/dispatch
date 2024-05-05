@@ -29,11 +29,11 @@ var (
 	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
 
 	// Styles for the dispatch_ ASCII logo.
-	logoStyle           = lipgloss.NewStyle().Foreground(whiteColor)
+	logoStyle           = lipgloss.NewStyle().Foreground(defaultColor)
 	logoUnderscoreStyle = lipgloss.NewStyle().Foreground(greenColor)
 
 	// Style for the table of function calls.
-	tableHeaderStyle = lipgloss.NewStyle().Foreground(whiteColor).Bold(true)
+	tableHeaderStyle = lipgloss.NewStyle().Foreground(defaultColor).Bold(true)
 
 	// Styles for function names and statuses in the table.
 	pendingStyle = lipgloss.NewStyle().Foreground(grayColor)

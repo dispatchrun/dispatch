@@ -15,8 +15,8 @@ var (
 	logTimeStyle = lipgloss.NewStyle().Foreground(grayColor)
 	logAttrStyle = lipgloss.NewStyle().Foreground(grayColor)
 
-	logDebugStyle = lipgloss.NewStyle().Foreground(whiteColor)
-	logInfoStyle  = lipgloss.NewStyle().Foreground(whiteColor)
+	logDebugStyle = lipgloss.NewStyle().Foreground(defaultColor)
+	logInfoStyle  = lipgloss.NewStyle().Foreground(defaultColor)
 	logWarnStyle  = lipgloss.NewStyle().Foreground(yellowColor)
 	logErrorStyle = lipgloss.NewStyle().Foreground(redColor)
 )
