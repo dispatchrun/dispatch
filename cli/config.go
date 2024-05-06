@@ -23,8 +23,6 @@ var (
 	DispatchConsoleUrl       string
 
 	DispatchConfigPath string
-
-	Color bool
 )
 
 func init() {
@@ -52,18 +50,6 @@ func init() {
 			configHome = "$HOME/.config"
 		}
 		DispatchConfigPath = filepath.Join(os.ExpandEnv(configHome), "dispatch/config.toml")
-	}
-
-	// Enable color when connected to a terminal, unless the NO_COLOR
-	// environment variable is set (to any value). If stdout or stderr are
-	// redirected, colors are disabled. If the FORCE_COLOR environment
-	// variable is set (to any value), color is unconditionally enabled.
-	Color = isTerminal(os.Stdout) && isTerminal(os.Stderr)
-	if os.Getenv("NO_COLOR") != "" {
-		Color = false
-	}
-	if os.Getenv("FORCE_COLOR") != "" {
-		Color = true
 	}
 }
 
