@@ -249,7 +249,16 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			switch msg.String() {
-			case "ctrl+c", "q", "esc":
+			case "esc":
+				if t.activeTab == detailTab {
+					// IMO esc should take you back to the functions tab
+					// rather than quitting the CLI when you're on the
+					// detail tab.
+					t.activeTab = functionsTab
+				} else {
+					return t, tea.Quit
+				}
+			case "ctrl+c", "q":
 				return t, tea.Quit
 			case "s":
 				cmds = append(cmds, focusSelect, textinput.Blink)
