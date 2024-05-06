@@ -26,6 +26,12 @@ const (
 	underscoreBlinkInterval = time.Second / 2
 )
 
+const (
+	pendingIcon = "•" // U+2022
+	successIcon = "✔" // U+2714
+	failureIcon = "✗" // U+2718
+)
+
 var (
 	// Style for the viewport that contains everything.
 	viewportStyle = lipgloss.NewStyle().Margin(1, 2)
@@ -46,15 +52,10 @@ var (
 
 	// Styles for other components inside the table.
 	treeStyle = lipgloss.NewStyle().Foreground(grayColor)
-)
 
-const (
-	pendingIcon = "•" // U+2022
-	successIcon = "✔" // U+2714
-	failureIcon = "✗" // U+2718
+	// Styles for the function call detail tab.
+	separatorStyle = lipgloss.NewStyle().Foreground(grayColor)
 )
-
-type DispatchID string
 
 type TUI struct {
 	ticks uint64
@@ -65,7 +66,7 @@ type TUI struct {
 	// FIXME: we never clean up items from these maps
 	roots        map[DispatchID]struct{}
 	orderedRoots []DispatchID
-	nodes        map[DispatchID]node
+	nodes        map[DispatchID]functionCall
 
 	// Storage for logs.
 	logs bytes.Buffer
@@ -141,46 +142,6 @@ var (
 	selectKeyMap       = []key.Binding{selectKey, exitSelectKey, tabKey, quitInSelectKey}
 )
 
-type node struct {
-	function string
-
-	failures int
-	polls    int
-
-	lastStatus sdkv1.Status
-	lastError  error
-
-	running   bool
-	suspended bool
-	done      bool
-
-	creationTime   time.Time
-	expirationTime time.Time
-	doneTime       time.Time
-
-	children        map[DispatchID]struct{}
-	orderedChildren []DispatchID
-
-	timeline []roundtrip
-}
-
-type roundtrip struct {
-	request  runRequest
-	response runResponse
-}
-
-type runRequest struct {
-	ts    time.Time
-	proto *sdkv1.RunRequest
-}
-
-type runResponse struct {
-	ts         time.Time
-	proto      *sdkv1.RunResponse
-	httpStatus int
-	err        error
-}
-
 type tickMsg struct{}
 
 func tick() tea.Cmd {
@@ -237,7 +198,6 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.selection.SetValue("")
 
 	case tea.WindowSizeMsg:
-		// Initialize or resize the viewport.
 		t.windowHeight = msg.Height
 		height := msg.Height - 1 // reserve space for status bar
 		width := msg.Width
@@ -270,9 +230,6 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "esc":
 				if t.activeTab == detailTab {
-					// IMO esc should take you back to the functions tab
-					// rather than quitting the CLI when you're on the
-					// detail tab.
 					t.activeTab = functionsTab
 				} else {
 					return t, tea.Quit
@@ -307,23 +264,6 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return t, tea.Batch(cmds...)
 }
-
-// https://patorjk.com/software/taag/ (Ogre)
-var dispatchAscii = []string{
-	`     _ _                 _       _`,
-	`  __| (_)___ _ __   __ _| |_ ___| |__`,
-	` / _' | / __| '_ \ / _' | __/ __| '_ \`,
-	`| (_| | \__ \ |_) | (_| | || (__| | | |`,
-	` \__,_|_|___/ .__/ \__,_|\__\___|_| |_|`,
-	`            |_|`,
-}
-
-var underscoreAscii = []string{
-	" _____",
-	"|_____|",
-}
-
-const underscoreIndex = 3
 
 func (t *TUI) View() string {
 	t.mu.Lock()
@@ -362,9 +302,8 @@ func (t *TUI) View() string {
 			}
 		case detailTab:
 			id := *t.selected
-			n := t.nodes[id]
-			viewportContent = "TODO"
-			statusBarContent = fmt.Sprintf("%s (%s)", n.function, id)
+			viewportContent = t.detailView(id)
+			statusBarContent = t.detailStatusView(id)
 			helpContent = t.detailTabHelp
 		case logsTab:
 			viewportContent = t.logs.String()
@@ -396,6 +335,23 @@ func (t *TUI) View() string {
 	return b.String()
 }
 
+// https://patorjk.com/software/taag/ (Ogre)
+var dispatchAscii = []string{
+	`     _ _                 _       _`,
+	`  __| (_)___ _ __   __ _| |_ ___| |__`,
+	` / _' | / __| '_ \ / _' | __/ __| '_ \`,
+	`| (_| | \__ \ |_) | (_| | || (__| | | |`,
+	` \__,_|_|___/ .__/ \__,_|\__\___|_| |_|`,
+	`            |_|`,
+}
+
+var underscoreAscii = []string{
+	" _____",
+	"|_____|",
+}
+
+const underscoreIndex = 3
+
 func (t *TUI) logoView() string {
 	showUnderscore := (t.ticks/uint64(underscoreBlinkInterval/refreshInterval))%2 == 0
 
@@ -412,6 +368,282 @@ func (t *TUI) logoView() string {
 	return b.String()
 }
 
+func (t *TUI) functionsView(now time.Time) string {
+	t.selected = nil
+
+	// Render function calls in a hybrid table/tree view.
+	var b strings.Builder
+	var rows rowBuffer
+	for i, rootID := range t.orderedRoots {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+
+		// Buffer rows in memory.
+		t.buildRows(now, rootID, nil, &rows)
+
+		// Dynamically size the function call tree column.
+		maxFunctionWidth := 0
+		for i := range rows.rows {
+			maxFunctionWidth = max(maxFunctionWidth, ansi.PrintableRuneWidth(rows.rows[i].function))
+		}
+		functionColumnWidth := max(9, min(50, maxFunctionWidth))
+
+		// Render the table.
+		b.WriteString(t.tableHeaderView(functionColumnWidth))
+		for i := range rows.rows {
+			b.WriteString(t.tableRowView(&rows.rows[i], functionColumnWidth))
+		}
+
+		rows.reset()
+	}
+	return b.String()
+}
+
+func (t *TUI) tableHeaderView(functionColumnWidth int) string {
+	columns := []string{
+		left(functionColumnWidth, tableHeaderStyle.Render("Function")),
+		right(8, tableHeaderStyle.Render("Attempt")),
+		right(10, tableHeaderStyle.Render("Duration")),
+		left(1, pendingIcon),
+		left(40, tableHeaderStyle.Render("Status")),
+	}
+	if t.selectMode {
+		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
+		columns = append([]string{left(idWidth, strings.Repeat("#", idWidth))}, columns...)
+	}
+	return join(columns...)
+}
+
+func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
+	attemptStr := strconv.Itoa(r.attempt)
+
+	var durationStr string
+	if r.duration > 0 {
+		durationStr = r.duration.String()
+	} else {
+		durationStr = "?"
+	}
+
+	values := []string{
+		left(functionColumnWidth, r.function),
+		right(8, attemptStr),
+		right(10, durationStr),
+		left(1, r.icon),
+		left(40, r.status),
+	}
+
+	id := strconv.Itoa(r.index)
+	if t.selectMode {
+		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
+		paddedID := left(idWidth, id)
+		if input := strings.TrimSpace(t.selection.Value()); input != "" && id == input {
+			paddedID = selectedStyle.Render(paddedID)
+			t.selected = &r.id
+		}
+		values = append([]string{paddedID}, values...)
+	}
+	return join(values...)
+}
+
+func (t *TUI) detailView(id DispatchID) string {
+	return "TODO"
+}
+
+func (t *TUI) detailStatusView(id DispatchID) string {
+	n := t.nodes[id]
+
+	now := time.Now()
+
+	style, _, status := n.status(now)
+
+	parts := []string{style.Render(n.function())}
+	if d := n.duration(now); d >= 0 {
+		parts = append(parts, d.String())
+	}
+	parts = append(parts, style.Render(status))
+
+	return strings.Join(parts, separatorStyle.Render(", "))
+}
+
+type row struct {
+	id       DispatchID
+	index    int
+	function string
+	attempt  int
+	duration time.Duration
+	icon     string
+	status   string
+}
+
+type rowBuffer struct {
+	rows []row
+	seq  int
+}
+
+func (b *rowBuffer) add(r row) {
+	b.seq++
+	r.index = b.seq
+	b.rows = append(b.rows, r)
+}
+
+func (b *rowBuffer) reset() {
+	b.rows = b.rows[:0]
+}
+
+func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBuffer) {
+	n := t.nodes[id]
+
+	// Render the tree prefix.
+	var function strings.Builder
+	for i, last := range isLast {
+		var s string
+		if i == len(isLast)-1 {
+			if last {
+				s = "└─"
+			} else {
+				s = "├─"
+			}
+		} else {
+			if last {
+				s = "  "
+			} else {
+				s = "│ "
+			}
+		}
+		function.WriteString(treeStyle.Render(s))
+		function.WriteByte(' ')
+	}
+
+	style, icon, status := n.status(now)
+
+	function.WriteString(style.Render(n.function()))
+
+	rows.add(row{
+		id:       id,
+		function: function.String(),
+		attempt:  n.attempt(),
+		duration: n.duration(now),
+		icon:     style.Render(icon),
+		status:   style.Render(status),
+	})
+
+	// Recursively render children.
+	for i, id := range n.orderedChildren {
+		last := i == len(n.orderedChildren)-1
+		t.buildRows(now, id, append(isLast[:len(isLast):len(isLast)], last), rows)
+	}
+}
+
+type DispatchID string
+
+type functionCall struct {
+	lastFunction string
+	lastStatus   sdkv1.Status
+	lastError    error
+
+	failures int
+	polls    int
+
+	running   bool
+	suspended bool
+	done      bool
+
+	creationTime   time.Time
+	expirationTime time.Time
+	doneTime       time.Time
+
+	children        map[DispatchID]struct{}
+	orderedChildren []DispatchID
+
+	timeline []roundtrip
+}
+
+type roundtrip struct {
+	request  runRequest
+	response runResponse
+}
+
+type runRequest struct {
+	ts    time.Time
+	proto *sdkv1.RunRequest
+}
+
+type runResponse struct {
+	ts         time.Time
+	proto      *sdkv1.RunResponse
+	httpStatus int
+	err        error
+}
+
+func (n *functionCall) function() string {
+	if n.lastFunction != "" {
+		return n.lastFunction
+	}
+	return "(?)"
+}
+
+func (n *functionCall) status(now time.Time) (style lipgloss.Style, icon, status string) {
+	icon = pendingIcon
+	if n.running || n.suspended {
+		style = pendingStyle
+	} else if n.done {
+		if n.lastStatus == sdkv1.Status_STATUS_OK {
+			style = okStyle
+			icon = successIcon
+		} else {
+			style = errorStyle
+			icon = failureIcon
+		}
+	} else if !n.expirationTime.IsZero() && n.expirationTime.Before(now) {
+		n.lastError = errors.New("Expired")
+		style = errorStyle
+		n.done = true
+		n.doneTime = n.expirationTime
+		icon = failureIcon
+	} else if n.failures > 0 {
+		style = retryStyle
+	} else {
+		style = pendingStyle
+	}
+
+	if n.running {
+		status = "Running"
+	} else if n.suspended {
+		status = "Suspended"
+	} else if n.lastError != nil {
+		status = n.lastError.Error()
+	} else if n.lastStatus != sdkv1.Status_STATUS_UNSPECIFIED {
+		status = statusString(n.lastStatus)
+	} else {
+		status = "Pending"
+	}
+
+	return
+}
+
+func (n *functionCall) attempt() int {
+	attempt := len(n.timeline) - n.polls
+	if n.suspended {
+		attempt++
+	}
+	return attempt
+}
+
+func (n *functionCall) duration(now time.Time) time.Duration {
+	var duration time.Duration
+	if !n.creationTime.IsZero() {
+		var end time.Time
+		if !n.done {
+			end = now
+		} else {
+			end = n.doneTime
+		}
+		duration = end.Sub(n.creationTime).Truncate(time.Millisecond)
+	}
+	return duration
+}
+
 func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 	// ObserveRequest is part of the FunctionCallObserver interface.
 	// It's called after a request has been received from the Dispatch API,
@@ -424,12 +656,12 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 		t.roots = map[DispatchID]struct{}{}
 	}
 	if t.nodes == nil {
-		t.nodes = map[DispatchID]node{}
+		t.nodes = map[DispatchID]functionCall{}
 	}
 
-	rootID := t.parseID(req.RootDispatchId)
-	parentID := t.parseID(req.ParentDispatchId)
-	id := t.parseID(req.DispatchId)
+	rootID := DispatchID(req.RootDispatchId)
+	parentID := DispatchID(req.ParentDispatchId)
+	id := DispatchID(req.DispatchId)
 
 	// Upsert the root.
 	if _, ok := t.roots[rootID]; !ok {
@@ -438,16 +670,16 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 	}
 	root, ok := t.nodes[rootID]
 	if !ok {
-		root = node{}
+		root = functionCall{}
 	}
 	t.nodes[rootID] = root
 
 	// Upsert the node.
 	n, ok := t.nodes[id]
 	if !ok {
-		n = node{}
+		n = functionCall{}
 	}
-	n.function = req.Function
+	n.lastFunction = req.Function
 	n.running = true
 	n.suspended = false
 	if req.CreationTime != nil {
@@ -466,7 +698,7 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 	if parentID != "" {
 		parent, ok := t.nodes[parentID]
 		if !ok {
-			parent = node{}
+			parent = functionCall{}
 			if parentID != rootID {
 				panic("not implemented")
 			}
@@ -490,7 +722,7 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	id := t.parseID(req.DispatchId)
+	id := DispatchID(req.DispatchId)
 	n := t.nodes[id]
 
 	rt := &n.timeline[len(n.timeline)-1]
@@ -510,7 +742,7 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 		case sdkv1.Status_STATUS_OK:
 			// noop
 		case sdkv1.Status_STATUS_INCOMPATIBLE_STATE:
-			n = node{function: n.function} // reset
+			n = functionCall{lastFunction: n.lastFunction} // reset
 		default:
 			n.failures++
 		}
@@ -520,7 +752,7 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 			n.lastStatus = res.Status
 			n.done = terminalStatus(res.Status)
 			if d.Exit.TailCall != nil {
-				n = node{function: d.Exit.TailCall.Function} // reset
+				n = functionCall{lastFunction: d.Exit.TailCall.Function} // reset
 			} else if res.Status != sdkv1.Status_STATUS_OK && d.Exit.Result != nil {
 				if e := d.Exit.Result.Error; e != nil && e.Type != "" {
 					if e.Message == "" {
@@ -562,265 +794,6 @@ func (t *TUI) Read(b []byte) (int, error) {
 	defer t.mu.Unlock()
 
 	return t.logs.Read(b)
-}
-
-func (t *TUI) parseID(id string) DispatchID {
-	return DispatchID(id)
-}
-
-func whitespace(width int) string {
-	return strings.Repeat(" ", width)
-}
-
-func padding(width int, s string) int {
-	return width - ansi.PrintableRuneWidth(s)
-}
-
-func truncate(width int, s string) string {
-	var truncated bool
-	for len(s) > 0 && ansi.PrintableRuneWidth(s) > width {
-		s = s[:len(s)-1]
-		truncated = true
-	}
-	if truncated {
-		s = s + "\033[0m"
-	}
-	return s
-}
-
-func right(width int, s string) string {
-	if ansi.PrintableRuneWidth(s) > width {
-		return truncate(width-3, s) + "..."
-	}
-	return whitespace(padding(width, s)) + s
-}
-
-func left(width int, s string) string {
-	if ansi.PrintableRuneWidth(s) > width {
-		return truncate(width-3, s) + "..."
-	}
-	return s + whitespace(padding(width, s))
-}
-
-func (t *TUI) functionsView(now time.Time) string {
-	t.selected = nil
-
-	// Render function calls in a hybrid table/tree view.
-	var b strings.Builder
-	var rows rowBuffer
-	for i, rootID := range t.orderedRoots {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-
-		// Buffer rows in memory.
-		t.buildRows(now, rootID, nil, &rows)
-
-		// Dynamically size the function call tree column.
-		maxFunctionWidth := 0
-		for i := range rows.rows {
-			maxFunctionWidth = max(maxFunctionWidth, ansi.PrintableRuneWidth(rows.rows[i].function))
-		}
-		functionColumnWidth := max(9, min(50, maxFunctionWidth))
-
-		// Render the table.
-		b.WriteString(t.tableHeaderView(functionColumnWidth))
-		for i := range rows.rows {
-			b.WriteString(t.tableRowView(&rows.rows[i], functionColumnWidth))
-		}
-
-		rows.reset()
-	}
-	return b.String()
-}
-
-type row struct {
-	id       DispatchID
-	index    int
-	function string
-	attempt  int
-	elapsed  time.Duration
-	icon     string
-	status   string
-}
-
-type rowBuffer struct {
-	rows []row
-	seq  int
-}
-
-func (b *rowBuffer) add(r row) {
-	b.seq++
-	r.index = b.seq
-	b.rows = append(b.rows, r)
-}
-
-func (b *rowBuffer) reset() {
-	b.rows = b.rows[:0]
-}
-
-func (t *TUI) tableHeaderView(functionColumnWidth int) string {
-	columns := []string{
-		left(functionColumnWidth, tableHeaderStyle.Render("Function")),
-		right(8, tableHeaderStyle.Render("Attempt")),
-		right(10, tableHeaderStyle.Render("Duration")),
-		left(1, pendingIcon),
-		left(40, tableHeaderStyle.Render("Status")),
-	}
-	if t.selectMode {
-		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
-		columns = append([]string{left(idWidth, strings.Repeat("#", idWidth))}, columns...)
-	}
-	return join(columns...)
-}
-
-func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
-	attemptStr := strconv.Itoa(r.attempt)
-
-	var elapsedStr string
-	if r.elapsed > 0 {
-		elapsedStr = r.elapsed.String()
-	} else {
-		elapsedStr = "?"
-	}
-
-	values := []string{
-		left(functionColumnWidth, r.function),
-		right(8, attemptStr),
-		right(10, elapsedStr),
-		left(1, r.icon),
-		left(40, r.status),
-	}
-
-	id := strconv.Itoa(r.index)
-	if t.selectMode {
-		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
-		paddedID := left(idWidth, id)
-		if input := strings.TrimSpace(t.selection.Value()); input != "" && id == input {
-			paddedID = selectedStyle.Render(paddedID)
-			t.selected = &r.id
-		}
-		values = append([]string{paddedID}, values...)
-	}
-	return join(values...)
-}
-
-func join(rows ...string) string {
-	var b strings.Builder
-	for i, row := range rows {
-		if i > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(row)
-	}
-	b.WriteByte('\n')
-	return b.String()
-}
-
-func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBuffer) {
-	// t.mu must be locked!
-
-	n := t.nodes[id]
-
-	// Render the tree prefix.
-	var function strings.Builder
-	for i, last := range isLast {
-		var s string
-		if i == len(isLast)-1 {
-			if last {
-				s = "└─"
-			} else {
-				s = "├─"
-			}
-		} else {
-			if last {
-				s = "  "
-			} else {
-				s = "│ "
-			}
-		}
-		function.WriteString(treeStyle.Render(s))
-		function.WriteByte(' ')
-	}
-
-	// Determine what to print, based on the status of the function call.
-	var style lipgloss.Style
-	icon := pendingIcon
-	if n.running || n.suspended {
-		style = pendingStyle
-	} else if n.done {
-		if n.lastStatus == sdkv1.Status_STATUS_OK {
-			style = okStyle
-			icon = successIcon
-		} else {
-			style = errorStyle
-			icon = failureIcon
-		}
-	} else if !n.expirationTime.IsZero() && n.expirationTime.Before(now) {
-		n.lastError = errors.New("Expired")
-		style = errorStyle
-		n.done = true
-		n.doneTime = n.expirationTime
-		icon = failureIcon
-	} else if n.failures > 0 {
-		style = retryStyle
-	} else {
-		style = pendingStyle
-	}
-
-	// Render the function name.
-	if n.function != "" {
-		function.WriteString(style.Render(n.function))
-	} else {
-		function.WriteString(style.Render("(?)"))
-	}
-
-	// Render the status and icon.
-	var status string
-	if n.running {
-		status = "Running"
-	} else if n.suspended {
-		status = "Suspended"
-	} else if n.lastError != nil {
-		status = n.lastError.Error()
-	} else if n.lastStatus != sdkv1.Status_STATUS_UNSPECIFIED {
-		status = statusString(n.lastStatus)
-	} else {
-		status = "Pending"
-	}
-	status = style.Render(status)
-	icon = style.Render(icon)
-
-	attempt := len(n.timeline) - n.polls
-	if n.suspended {
-		attempt++
-	}
-
-	var elapsed time.Duration
-	if !n.creationTime.IsZero() {
-		var tail time.Time
-		if !n.done {
-			tail = now
-		} else {
-			tail = n.doneTime
-		}
-		elapsed = tail.Sub(n.creationTime).Truncate(time.Millisecond)
-	}
-
-	rows.add(row{
-		id:       id,
-		function: function.String(),
-		attempt:  attempt,
-		elapsed:  elapsed,
-		icon:     icon,
-		status:   status,
-	})
-
-	// Recursively render children.
-	for i, id := range n.orderedChildren {
-		last := i == len(n.orderedChildren)-1
-		t.buildRows(now, id, append(isLast[:len(isLast):len(isLast)], last), rows)
-	}
 }
 
 func statusString(status sdkv1.Status) string {
