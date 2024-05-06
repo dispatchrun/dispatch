@@ -160,6 +160,25 @@ type node struct {
 
 	children        map[DispatchID]struct{}
 	orderedChildren []DispatchID
+
+	timeline []roundtrip
+}
+
+type roundtrip struct {
+	request  runRequest
+	response runResponse
+}
+
+type runRequest struct {
+	ts    time.Time
+	proto *sdkv1.RunRequest
+}
+
+type runResponse struct {
+	ts         time.Time
+	proto      *sdkv1.RunResponse
+	httpStatus int
+	err        error
 }
 
 type tickMsg struct{}
@@ -393,7 +412,7 @@ func (t *TUI) logoView() string {
 	return b.String()
 }
 
-func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
+func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 	// ObserveRequest is part of the FunctionCallObserver interface.
 	// It's called after a request has been received from the Dispatch API,
 	// and before the request has been sent to the local application.
@@ -435,11 +454,12 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 		n.creationTime = req.CreationTime.AsTime()
 	}
 	if n.creationTime.IsZero() {
-		n.creationTime = time.Now()
+		n.creationTime = now
 	}
 	if req.ExpirationTime != nil {
 		n.expirationTime = req.ExpirationTime.AsTime()
 	}
+	n.timeline = append(n.timeline, roundtrip{request: runRequest{ts: now, proto: req}})
 	t.nodes[id] = n
 
 	// Upsert the parent and link its child, if applicable.
@@ -462,7 +482,7 @@ func (t *TUI) ObserveRequest(req *sdkv1.RunRequest) {
 	}
 }
 
-func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Response, res *sdkv1.RunResponse) {
+func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, httpRes *http.Response, res *sdkv1.RunResponse) {
 	// ObserveResponse is part of the FunctionCallObserver interface.
 	// It's called after a response has been received from the local
 	// application, and before the response has been sent to Dispatch.
@@ -472,6 +492,14 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 
 	id := t.parseID(req.DispatchId)
 	n := t.nodes[id]
+
+	rt := &n.timeline[len(n.timeline)-1]
+	rt.response.ts = now
+	rt.response.proto = res
+	rt.response.err = err
+	if res == nil && httpRes != nil {
+		rt.response.httpStatus = httpRes.StatusCode
+	}
 
 	n.responses++
 	n.error = nil
@@ -516,7 +544,7 @@ func (t *TUI) ObserveResponse(req *sdkv1.RunRequest, err error, httpRes *http.Re
 	}
 
 	if n.done && n.doneTime.IsZero() {
-		n.doneTime = time.Now()
+		n.doneTime = now
 	}
 
 	t.nodes[id] = n
