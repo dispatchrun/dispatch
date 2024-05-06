@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -70,12 +72,15 @@ type TUI struct {
 	// TUI models / options / flags, used to display the information
 	// above.
 	viewport         viewport.Model
+	selection        textinput.Model
 	help             help.Model
 	ready            bool
 	activeTab        tab
-	logHelp          string
-	functionCallHelp string
-	tail             bool
+	selectMode       bool
+	tailMode         bool
+	logsTabHelp      string
+	functionsTabHelp string
+	selectHelp       string
 	windowHeight     int
 
 	mu sync.Mutex
@@ -90,20 +95,41 @@ const (
 
 const tabCount = 2
 
-var keyMap = []key.Binding{
-	key.NewBinding(
+var (
+	tabKey = key.NewBinding(
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "switch tabs"),
-	),
-	key.NewBinding(
+	)
+
+	selectKey = key.NewBinding(
+		key.WithKeys("s"),
+		key.WithHelp("s", "select"),
+	)
+
+	tailKey = key.NewBinding(
 		key.WithKeys("t"),
 		key.WithHelp("t", "tail"),
-	),
-	key.NewBinding(
+	)
+
+	quitKey = key.NewBinding(
 		key.WithKeys("q", "ctrl+c", "esc"),
 		key.WithHelp("q", "quit"),
-	),
-}
+	)
+
+	exitSelectKey = key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "exit select"),
+	)
+
+	quitInSelectKey = key.NewBinding(
+		key.WithKeys("ctrl+c"),
+		key.WithHelp("ctrl+c", "quit"),
+	)
+
+	functionsTabKeyMap = []key.Binding{tabKey, selectKey, quitKey}
+	logsTabKeyMap      = []key.Binding{tabKey, tailKey, quitKey}
+	selectKeyMap       = []key.Binding{tabKey, exitSelectKey, quitInSelectKey}
+)
 
 type node struct {
 	function string
@@ -141,17 +167,26 @@ func tick() tea.Cmd {
 	})
 }
 
+type focusSelectMsg struct{}
+
+func focusSelect() tea.Msg {
+	return focusSelectMsg{}
+}
+
 func (t *TUI) Init() tea.Cmd {
-	t.help = help.New()
 	// Note that t.viewport is initialized on the first tea.WindowSizeMsg.
+	t.help = help.New()
 
-	t.tail = true
+	t.selection = textinput.New()
+	t.selection.Focus() // input is visibile iff t.selectMode == true
+
+	t.selectMode = false
+	t.tailMode = true
+
 	t.activeTab = functionsTab
-
-	// Only show tab+quit in default function call view.
-	// Show tab+tail+quit when viewing logs.
-	t.logHelp = t.help.ShortHelpView(keyMap)
-	t.functionCallHelp = t.help.ShortHelpView(append(keyMap[0:1:1], keyMap[len(keyMap)-1]))
+	t.logsTabHelp = t.help.ShortHelpView(logsTabKeyMap)
+	t.functionsTabHelp = t.help.ShortHelpView(functionsTabKeyMap)
+	t.selectHelp = t.help.ShortHelpView(selectKeyMap)
 
 	return tick()
 }
@@ -166,6 +201,11 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		t.ticks++
 		cmds = append(cmds, tick())
+
+	case focusSelectMsg:
+		t.selectMode = true
+		t.selection.SetValue("")
+
 	case tea.WindowSizeMsg:
 		// Initialize or resize the viewport.
 		t.windowHeight = msg.Height
@@ -179,21 +219,45 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.viewport.Width = width
 			t.viewport.Height = height
 		}
+
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			return t, tea.Quit
-		case "t":
-			t.tail = true
-		case "tab":
-			t.activeTab = (t.activeTab + 1) % tabCount
-		case "up", "down", "left", "right", "pgup", "pgdown", "ctrl+u", "ctrl+d":
-			t.tail = false
+		if t.selectMode {
+			switch msg.String() {
+			case "esc":
+				t.selectMode = false
+			case "tab":
+				t.selectMode = false
+				t.activeTab = (t.activeTab + 1) % tabCount
+			case "ctrl+c":
+				return t, tea.Quit
+			}
+		} else {
+			switch msg.String() {
+			case "ctrl+c", "q", "esc":
+				return t, tea.Quit
+			case "s":
+				cmds = append(cmds, focusSelect, textinput.Blink)
+			case "t":
+				t.tailMode = true
+			case "tab":
+				t.selectMode = false
+				t.activeTab = (t.activeTab + 1) % tabCount
+			case "up", "down", "left", "right", "pgup", "pgdown", "ctrl+u", "ctrl+d":
+				t.tailMode = false
+			}
 		}
 	}
+
+	// Forward messages to the text input in select mode.
+	if t.selectMode {
+		t.selection, cmd = t.selection.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	// Forward messages to the viewport, e.g. for scroll-back support.
 	t.viewport, cmd = t.viewport.Update(msg)
 	cmds = append(cmds, cmd)
+
 	return t, tea.Batch(cmds...)
 }
 
@@ -220,7 +284,7 @@ func (t *TUI) View() string {
 
 	var viewportContent string
 	var statusBarContent string
-	helpContent := t.functionCallHelp
+	helpContent := t.functionsTabHelp
 	if !t.ready {
 		viewportContent = t.logoView()
 		statusBarContent = "Initializing..."
@@ -231,7 +295,7 @@ func (t *TUI) View() string {
 				viewportContent = t.logoView()
 				statusBarContent = "Waiting for function calls..."
 			} else {
-				viewportContent = t.functionCallsView(time.Now())
+				viewportContent = t.functionsView(time.Now())
 				if len(t.nodes) == 1 {
 					statusBarContent = "1 total function call"
 				} else {
@@ -245,9 +309,13 @@ func (t *TUI) View() string {
 				}
 				statusBarContent += fmt.Sprintf(", %d in-flight", inflightCount)
 			}
+			if t.selectMode {
+				statusBarContent = t.selection.View()
+				helpContent = t.selectHelp
+			}
 		case logsTab:
 			viewportContent = t.logs.String()
-			helpContent = t.logHelp
+			helpContent = t.logsTabHelp
 		}
 	}
 
@@ -255,7 +323,7 @@ func (t *TUI) View() string {
 
 	// Tail the output, unless the user has tried
 	// to scroll back (e.g. with arrow keys).
-	if t.tail {
+	if t.tailMode {
 		t.viewport.GotoBottom()
 	}
 
@@ -472,7 +540,7 @@ func left(width int, s string) string {
 	return s + whitespace(padding(width, s))
 }
 
-func (t *TUI) functionCallsView(now time.Time) string {
+func (t *TUI) functionsView(now time.Time) string {
 	// Render function calls in a hybrid table/tree view.
 	var b strings.Builder
 	var rows rowBuffer
@@ -492,9 +560,9 @@ func (t *TUI) functionCallsView(now time.Time) string {
 		functionColumnWidth := max(9, min(50, maxFunctionWidth))
 
 		// Render the table.
-		b.WriteString(tableHeaderView(functionColumnWidth))
+		b.WriteString(t.tableHeaderView(functionColumnWidth))
 		for i := range rows.rows {
-			b.WriteString(tableRowView(&rows.rows[i], functionColumnWidth))
+			b.WriteString(t.tableRowView(&rows.rows[i], functionColumnWidth))
 		}
 
 		rows.reset()
@@ -503,6 +571,7 @@ func (t *TUI) functionCallsView(now time.Time) string {
 }
 
 type row struct {
+	id       int
 	function string
 	attempts int
 	elapsed  time.Duration
@@ -512,9 +581,12 @@ type row struct {
 
 type rowBuffer struct {
 	rows []row
+	seq  int
 }
 
 func (b *rowBuffer) add(r row) {
+	b.seq++
+	r.id = b.seq
 	b.rows = append(b.rows, r)
 }
 
@@ -522,17 +594,22 @@ func (b *rowBuffer) reset() {
 	b.rows = b.rows[:0]
 }
 
-func tableHeaderView(functionColumnWidth int) string {
-	return join(
+func (t *TUI) tableHeaderView(functionColumnWidth int) string {
+	columns := []string{
 		left(functionColumnWidth, tableHeaderStyle.Render("Function")),
 		right(8, tableHeaderStyle.Render("Attempts")),
 		right(10, tableHeaderStyle.Render("Duration")),
 		left(1, pendingIcon),
 		left(40, tableHeaderStyle.Render("Status")),
-	)
+	}
+	if t.selectMode {
+		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
+		columns = append([]string{left(idWidth, strings.Repeat("#", idWidth))}, columns...)
+	}
+	return join(columns...)
 }
 
-func tableRowView(r *row, functionColumnWidth int) string {
+func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 	attemptsStr := strconv.Itoa(r.attempts)
 
 	var elapsedStr string
@@ -542,13 +619,19 @@ func tableRowView(r *row, functionColumnWidth int) string {
 		elapsedStr = "?"
 	}
 
-	return join(
+	values := []string{
 		left(functionColumnWidth, r.function),
 		right(8, attemptsStr),
 		right(10, elapsedStr),
 		left(1, r.icon),
 		left(40, r.status),
-	)
+	}
+	if t.selectMode {
+		id := strconv.Itoa(r.id)
+		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
+		values = append([]string{left(idWidth, id)}, values...)
+	}
+	return join(values...)
 }
 
 func join(rows ...string) string {
