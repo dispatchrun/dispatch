@@ -81,8 +81,10 @@ type TUI struct {
 	tailMode         bool
 	logsTabHelp      string
 	functionsTabHelp string
+	detailTabHelp    string
 	selectHelp       string
 	windowHeight     int
+	selected         *DispatchID
 
 	mu sync.Mutex
 }
@@ -92,9 +94,10 @@ type tab int
 const (
 	functionsTab tab = iota
 	logsTab
+	detailTab
 )
 
-const tabCount = 2
+const tabCount = 3
 
 var (
 	tabKey = key.NewBinding(
@@ -102,7 +105,7 @@ var (
 		key.WithHelp("tab", "switch tab"),
 	)
 
-	selectKey = key.NewBinding(
+	selectModeKey = key.NewBinding(
 		key.WithKeys("s"),
 		key.WithHelp("s", "select"),
 	)
@@ -117,6 +120,11 @@ var (
 		key.WithHelp("q", "quit"),
 	)
 
+	selectKey = key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "select function"),
+	)
+
 	exitSelectKey = key.NewBinding(
 		key.WithKeys("esc"),
 		key.WithHelp("esc", "exit select"),
@@ -127,9 +135,10 @@ var (
 		key.WithHelp("ctrl+c", "quit"),
 	)
 
-	functionsTabKeyMap = []key.Binding{tabKey, selectKey, quitKey}
+	functionsTabKeyMap = []key.Binding{tabKey, selectModeKey, quitKey}
+	detailTabKeyMap    = []key.Binding{tabKey, quitKey}
 	logsTabKeyMap      = []key.Binding{tabKey, tailKey, quitKey}
-	selectKeyMap       = []key.Binding{tabKey, exitSelectKey, quitInSelectKey}
+	selectKeyMap       = []key.Binding{selectKey, exitSelectKey, tabKey, quitInSelectKey}
 )
 
 type node struct {
@@ -187,6 +196,7 @@ func (t *TUI) Init() tea.Cmd {
 	t.activeTab = functionsTab
 	t.logsTabHelp = t.help.ShortHelpView(logsTabKeyMap)
 	t.functionsTabHelp = t.help.ShortHelpView(functionsTabKeyMap)
+	t.detailTabHelp = t.help.ShortHelpView(detailTabKeyMap)
 	t.selectHelp = t.help.ShortHelpView(selectKeyMap)
 
 	return tick()
@@ -228,7 +238,12 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t.selectMode = false
 			case "tab":
 				t.selectMode = false
-				t.activeTab = (t.activeTab + 1) % tabCount
+				t.activeTab = functionsTab
+			case "enter":
+				if t.selected != nil {
+					t.selectMode = false
+					t.activeTab = detailTab
+				}
 			case "ctrl+c":
 				return t, tea.Quit
 			}
@@ -243,6 +258,9 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				t.selectMode = false
 				t.activeTab = (t.activeTab + 1) % tabCount
+				if t.activeTab == detailTab && t.selected == nil {
+					t.activeTab = functionsTab
+				}
 			case "up", "down", "left", "right", "pgup", "pgdown", "ctrl+u", "ctrl+d":
 				t.tailMode = false
 			}
@@ -314,6 +332,12 @@ func (t *TUI) View() string {
 				statusBarContent = t.selection.View()
 				helpContent = t.selectHelp
 			}
+		case detailTab:
+			id := *t.selected
+			n := t.nodes[id]
+			viewportContent = "TODO"
+			statusBarContent = fmt.Sprintf("%s (%s)", n.function, id)
+			helpContent = t.detailTabHelp
 		case logsTab:
 			viewportContent = t.logs.String()
 			helpContent = t.logsTabHelp
@@ -542,6 +566,8 @@ func left(width int, s string) string {
 }
 
 func (t *TUI) functionsView(now time.Time) string {
+	t.selected = nil
+
 	// Render function calls in a hybrid table/tree view.
 	var b strings.Builder
 	var rows rowBuffer
@@ -572,7 +598,8 @@ func (t *TUI) functionsView(now time.Time) string {
 }
 
 type row struct {
-	id       int
+	id       DispatchID
+	index    int
 	function string
 	attempts int
 	elapsed  time.Duration
@@ -587,7 +614,7 @@ type rowBuffer struct {
 
 func (b *rowBuffer) add(r row) {
 	b.seq++
-	r.id = b.seq
+	r.index = b.seq
 	b.rows = append(b.rows, r)
 }
 
@@ -628,12 +655,13 @@ func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 		left(40, r.status),
 	}
 
-	id := strconv.Itoa(r.id)
+	id := strconv.Itoa(r.index)
 	if t.selectMode {
 		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
 		paddedID := left(idWidth, id)
-		if input := t.selection.Value(); input != "" && strings.Contains(id, input) {
+		if input := strings.TrimSpace(t.selection.Value()); input != "" && id == input {
 			paddedID = selectedStyle.Render(paddedID)
+			t.selected = &r.id
 		}
 		values = append([]string{paddedID}, values...)
 	}
@@ -748,6 +776,7 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 	}
 
 	rows.add(row{
+		id:       id,
 		function: function.String(),
 		attempts: attempts,
 		elapsed:  elapsed,
