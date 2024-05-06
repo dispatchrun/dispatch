@@ -36,6 +36,7 @@ var (
 
 	// Style for the table of function calls.
 	tableHeaderStyle = lipgloss.NewStyle().Foreground(defaultColor).Bold(true)
+	selectedStyle    = lipgloss.NewStyle().Background(magentaColor)
 
 	// Styles for function names and statuses in the table.
 	pendingStyle = lipgloss.NewStyle().Foreground(grayColor)
@@ -626,10 +627,15 @@ func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 		left(1, r.icon),
 		left(40, r.status),
 	}
+
+	id := strconv.Itoa(r.id)
 	if t.selectMode {
-		id := strconv.Itoa(r.id)
 		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
-		values = append([]string{left(idWidth, id)}, values...)
+		paddedID := left(idWidth, id)
+		if input := t.selection.Value(); input != "" && strings.Contains(id, input) {
+			paddedID = selectedStyle.Render(paddedID)
+		}
+		values = append([]string{paddedID}, values...)
 	}
 	return join(values...)
 }
