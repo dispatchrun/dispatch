@@ -98,7 +98,7 @@ const tabCount = 2
 var (
 	tabKey = key.NewBinding(
 		key.WithKeys("tab"),
-		key.WithHelp("tab", "switch tabs"),
+		key.WithHelp("tab", "switch tab"),
 	)
 
 	selectKey = key.NewBinding(
