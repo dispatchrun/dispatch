@@ -54,19 +54,18 @@ var (
 	treeStyle = lipgloss.NewStyle().Foreground(grayColor)
 
 	// Styles for the function call detail tab.
-	separatorStyle = lipgloss.NewStyle().Foreground(grayColor)
+	detailHeaderStyle = lipgloss.NewStyle().Foreground(grayColor)
 )
 
 type TUI struct {
 	ticks uint64
 
-	// Storage for the function call hierarchies. Each function call
-	// has a "root" node, and nodes can have zero or more children.
+	// Storage for the function call hierarchies.
 	//
 	// FIXME: we never clean up items from these maps
 	roots        map[DispatchID]struct{}
 	orderedRoots []DispatchID
-	nodes        map[DispatchID]functionCall
+	calls        map[DispatchID]functionCall
 
 	// Storage for logs.
 	logs bytes.Buffer
@@ -283,13 +282,13 @@ func (t *TUI) View() string {
 				statusBarContent = "Waiting for function calls..."
 			} else {
 				viewportContent = t.functionsView(time.Now())
-				if len(t.nodes) == 1 {
+				if len(t.calls) == 1 {
 					statusBarContent = "1 total function call"
 				} else {
-					statusBarContent = fmt.Sprintf("%d total function calls", len(t.nodes))
+					statusBarContent = fmt.Sprintf("%d total function calls", len(t.calls))
 				}
 				var inflightCount int
-				for _, n := range t.nodes {
+				for _, n := range t.calls {
 					if !n.done {
 						inflightCount++
 					}
@@ -303,7 +302,6 @@ func (t *TUI) View() string {
 		case detailTab:
 			id := *t.selected
 			viewportContent = t.detailView(id)
-			statusBarContent = t.detailStatusView(id)
 			helpContent = t.detailTabHelp
 		case logsTab:
 			viewportContent = t.logs.String()
@@ -409,7 +407,7 @@ func (t *TUI) tableHeaderView(functionColumnWidth int) string {
 		left(40, tableHeaderStyle.Render("Status")),
 	}
 	if t.selectMode {
-		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
+		idWidth := int(math.Log10(float64(len(t.calls)))) + 1
 		columns = append([]string{left(idWidth, strings.Repeat("#", idWidth))}, columns...)
 	}
 	return join(columns...)
@@ -435,7 +433,7 @@ func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 
 	id := strconv.Itoa(r.index)
 	if t.selectMode {
-		idWidth := int(math.Log10(float64(len(t.nodes)))) + 1
+		idWidth := int(math.Log10(float64(len(t.calls)))) + 1
 		paddedID := left(idWidth, id)
 		if input := strings.TrimSpace(t.selection.Value()); input != "" && id == input {
 			paddedID = selectedStyle.Render(paddedID)
@@ -447,23 +445,34 @@ func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 }
 
 func (t *TUI) detailView(id DispatchID) string {
-	return "TODO"
-}
-
-func (t *TUI) detailStatusView(id DispatchID) string {
-	n := t.nodes[id]
-
 	now := time.Now()
+
+	n := t.calls[id]
 
 	style, _, status := n.status(now)
 
-	parts := []string{style.Render(n.function())}
-	if d := n.duration(now); d >= 0 {
-		parts = append(parts, d.String())
-	}
-	parts = append(parts, style.Render(status))
+	var view strings.Builder
 
-	return strings.Join(parts, separatorStyle.Render(", "))
+	add := func(name, value string) {
+		const padding = 15
+		view.WriteString(right(padding, detailHeaderStyle.Render(name)))
+		view.WriteByte(' ')
+		view.WriteString(value)
+		view.WriteByte('\n')
+	}
+
+	add("ID", string(id))
+	add("Function", n.function())
+	add("Status", style.Render(status))
+	add("Creation time", n.creationTime.Format(time.RFC3339))
+	if !n.expirationTime.IsZero() && !n.done {
+		add("Expiration time", n.expirationTime.Format(time.RFC3339))
+	}
+	add("Duration", n.duration(now).String())
+	add("Attempts", strconv.Itoa(n.attempt()))
+	add("Requests", strconv.Itoa(len(n.timeline)))
+
+	return view.String()
 }
 
 type row struct {
@@ -492,7 +501,7 @@ func (b *rowBuffer) reset() {
 }
 
 func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBuffer) {
-	n := t.nodes[id]
+	n := t.calls[id]
 
 	// Render the tree prefix.
 	var function strings.Builder
@@ -655,8 +664,8 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 	if t.roots == nil {
 		t.roots = map[DispatchID]struct{}{}
 	}
-	if t.nodes == nil {
-		t.nodes = map[DispatchID]functionCall{}
+	if t.calls == nil {
+		t.calls = map[DispatchID]functionCall{}
 	}
 
 	rootID := DispatchID(req.RootDispatchId)
@@ -668,14 +677,14 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 		t.roots[rootID] = struct{}{}
 		t.orderedRoots = append(t.orderedRoots, rootID)
 	}
-	root, ok := t.nodes[rootID]
+	root, ok := t.calls[rootID]
 	if !ok {
 		root = functionCall{}
 	}
-	t.nodes[rootID] = root
+	t.calls[rootID] = root
 
-	// Upsert the node.
-	n, ok := t.nodes[id]
+	// Upsert the function call.
+	n, ok := t.calls[id]
 	if !ok {
 		n = functionCall{}
 	}
@@ -692,11 +701,11 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 		n.expirationTime = req.ExpirationTime.AsTime()
 	}
 	n.timeline = append(n.timeline, roundtrip{request: runRequest{ts: now, proto: req}})
-	t.nodes[id] = n
+	t.calls[id] = n
 
 	// Upsert the parent and link its child, if applicable.
 	if parentID != "" {
-		parent, ok := t.nodes[parentID]
+		parent, ok := t.calls[parentID]
 		if !ok {
 			parent = functionCall{}
 			if parentID != rootID {
@@ -710,7 +719,7 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 			parent.children[id] = struct{}{}
 			parent.orderedChildren = append(parent.orderedChildren, id)
 		}
-		t.nodes[parentID] = parent
+		t.calls[parentID] = parent
 	}
 }
 
@@ -723,7 +732,7 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 	defer t.mu.Unlock()
 
 	id := DispatchID(req.DispatchId)
-	n := t.nodes[id]
+	n := t.calls[id]
 
 	rt := &n.timeline[len(n.timeline)-1]
 	rt.response.ts = now
@@ -779,7 +788,7 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 		n.doneTime = now
 	}
 
-	t.nodes[id] = n
+	t.calls[id] = n
 }
 
 func (t *TUI) Write(b []byte) (int, error) {
