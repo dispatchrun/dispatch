@@ -144,11 +144,11 @@ var (
 type node struct {
 	function string
 
-	failures  int
-	responses int
+	failures int
+	polls    int
 
-	status sdkv1.Status
-	error  error
+	lastStatus sdkv1.Status
+	lastError  error
 
 	running   bool
 	suspended bool
@@ -501,9 +501,8 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 		rt.response.httpStatus = httpRes.StatusCode
 	}
 
-	n.responses++
-	n.error = nil
-	n.status = 0
+	n.lastError = nil
+	n.lastStatus = 0
 	n.running = false
 
 	if res != nil {
@@ -518,29 +517,30 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 
 		switch d := res.Directive.(type) {
 		case *sdkv1.RunResponse_Exit:
-			n.status = res.Status
+			n.lastStatus = res.Status
 			n.done = terminalStatus(res.Status)
 			if d.Exit.TailCall != nil {
 				n = node{function: d.Exit.TailCall.Function} // reset
 			} else if res.Status != sdkv1.Status_STATUS_OK && d.Exit.Result != nil {
 				if e := d.Exit.Result.Error; e != nil && e.Type != "" {
 					if e.Message == "" {
-						n.error = fmt.Errorf("%s", e.Type)
+						n.lastError = fmt.Errorf("%s", e.Type)
 					} else {
-						n.error = fmt.Errorf("%s: %s", e.Type, e.Message)
+						n.lastError = fmt.Errorf("%s: %s", e.Type, e.Message)
 					}
 				}
 			}
 		case *sdkv1.RunResponse_Poll:
 			n.suspended = true
+			n.polls++
 		}
 	} else if httpRes != nil {
 		n.failures++
-		n.error = fmt.Errorf("unexpected HTTP status code %d", httpRes.StatusCode)
+		n.lastError = fmt.Errorf("unexpected HTTP status code %d", httpRes.StatusCode)
 		n.done = terminalHTTPStatusCode(httpRes.StatusCode)
 	} else if err != nil {
 		n.failures++
-		n.error = err
+		n.lastError = err
 	}
 
 	if n.done && n.doneTime.IsZero() {
@@ -638,7 +638,7 @@ type row struct {
 	id       DispatchID
 	index    int
 	function string
-	attempts int
+	attempt  int
 	elapsed  time.Duration
 	icon     string
 	status   string
@@ -662,7 +662,7 @@ func (b *rowBuffer) reset() {
 func (t *TUI) tableHeaderView(functionColumnWidth int) string {
 	columns := []string{
 		left(functionColumnWidth, tableHeaderStyle.Render("Function")),
-		right(8, tableHeaderStyle.Render("Attempts")),
+		right(8, tableHeaderStyle.Render("Attempt")),
 		right(10, tableHeaderStyle.Render("Duration")),
 		left(1, pendingIcon),
 		left(40, tableHeaderStyle.Render("Status")),
@@ -675,7 +675,7 @@ func (t *TUI) tableHeaderView(functionColumnWidth int) string {
 }
 
 func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
-	attemptsStr := strconv.Itoa(r.attempts)
+	attemptStr := strconv.Itoa(r.attempt)
 
 	var elapsedStr string
 	if r.elapsed > 0 {
@@ -686,7 +686,7 @@ func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 
 	values := []string{
 		left(functionColumnWidth, r.function),
-		right(8, attemptsStr),
+		right(8, attemptStr),
 		right(10, elapsedStr),
 		left(1, r.icon),
 		left(40, r.status),
@@ -749,7 +749,7 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 	if n.running || n.suspended {
 		style = pendingStyle
 	} else if n.done {
-		if n.status == sdkv1.Status_STATUS_OK {
+		if n.lastStatus == sdkv1.Status_STATUS_OK {
 			style = okStyle
 			icon = successIcon
 		} else {
@@ -757,7 +757,7 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 			icon = failureIcon
 		}
 	} else if !n.expirationTime.IsZero() && n.expirationTime.Before(now) {
-		n.error = errors.New("Expired")
+		n.lastError = errors.New("Expired")
 		style = errorStyle
 		n.done = true
 		n.doneTime = n.expirationTime
@@ -781,25 +781,20 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 		status = "Running"
 	} else if n.suspended {
 		status = "Suspended"
-	} else if n.error != nil {
-		status = n.error.Error()
-	} else if n.status != sdkv1.Status_STATUS_UNSPECIFIED {
-		status = statusString(n.status)
+	} else if n.lastError != nil {
+		status = n.lastError.Error()
+	} else if n.lastStatus != sdkv1.Status_STATUS_UNSPECIFIED {
+		status = statusString(n.lastStatus)
 	} else {
 		status = "Pending"
 	}
 	status = style.Render(status)
 	icon = style.Render(icon)
 
-	attempts := n.failures
-	if n.running {
-		attempts++
-	} else if n.done && n.status == sdkv1.Status_STATUS_OK {
-		attempts++
-	} else if n.responses > n.failures {
-		attempts++
+	attempt := len(n.timeline) - n.polls
+	if n.suspended {
+		attempt++
 	}
-	attempts = max(attempts, 1)
 
 	var elapsed time.Duration
 	if !n.creationTime.IsZero() {
@@ -815,7 +810,7 @@ func (t *TUI) buildRows(now time.Time, id DispatchID, isLast []bool, rows *rowBu
 	rows.add(row{
 		id:       id,
 		function: function.String(),
-		attempts: attempts,
+		attempt:  attempt,
 		elapsed:  elapsed,
 		icon:     icon,
 		status:   status,
