@@ -45,16 +45,18 @@ var (
 	selectedStyle    = lipgloss.NewStyle().Background(magentaColor)
 
 	// Styles for function names and statuses in the table.
-	pendingStyle = lipgloss.NewStyle().Foreground(grayColor)
-	retryStyle   = lipgloss.NewStyle().Foreground(yellowColor)
-	errorStyle   = lipgloss.NewStyle().Foreground(redColor)
-	okStyle      = lipgloss.NewStyle().Foreground(greenColor)
+	pendingStyle   = lipgloss.NewStyle().Foreground(grayColor)
+	suspendedStyle = lipgloss.NewStyle().Foreground(magentaColor)
+	retryStyle     = lipgloss.NewStyle().Foreground(yellowColor)
+	errorStyle     = lipgloss.NewStyle().Foreground(redColor)
+	okStyle        = lipgloss.NewStyle().Foreground(greenColor)
 
 	// Styles for other components inside the table.
 	treeStyle = lipgloss.NewStyle().Foreground(grayColor)
 
 	// Styles for the function call detail tab.
-	detailHeaderStyle = lipgloss.NewStyle().Foreground(grayColor)
+	detailHeaderStyle      = lipgloss.NewStyle().Foreground(grayColor)
+	detailLowPriorityStyle = lipgloss.NewStyle().Foreground(grayColor)
 )
 
 type TUI struct {
@@ -454,25 +456,97 @@ func (t *TUI) detailView(id DispatchID) string {
 	var view strings.Builder
 
 	add := func(name, value string) {
-		const padding = 15
-		view.WriteString(right(padding, detailHeaderStyle.Render(name)))
+		const padding = 16
+		view.WriteString(right(padding, detailHeaderStyle.Render(name+":")))
 		view.WriteByte(' ')
 		view.WriteString(value)
 		view.WriteByte('\n')
 	}
 
-	add("ID", string(id))
+	const timestampFormat = "2006-01-02T15:04:05.000"
+
+	add("ID", detailLowPriorityStyle.Render(string(id)))
 	add("Function", n.function())
 	add("Status", style.Render(status))
-	add("Creation time", n.creationTime.Format(time.RFC3339))
+	add("Creation time", detailLowPriorityStyle.Render(n.creationTime.Local().Format(timestampFormat)))
 	if !n.expirationTime.IsZero() && !n.done {
-		add("Expiration time", n.expirationTime.Format(time.RFC3339))
+		add("Expiration time", detailLowPriorityStyle.Render(n.expirationTime.Local().Format(timestampFormat)))
 	}
 	add("Duration", n.duration(now).String())
 	add("Attempts", strconv.Itoa(n.attempt()))
 	add("Requests", strconv.Itoa(len(n.timeline)))
 
-	return view.String()
+	var result strings.Builder
+	result.WriteString(view.String())
+
+	for _, rt := range n.timeline {
+		view.Reset()
+
+		result.WriteByte('\n')
+
+		// TODO: show request # and/or attempt #?
+
+		add("Timestamp", detailLowPriorityStyle.Render(rt.request.ts.Local().Format(timestampFormat)))
+		req := rt.request.proto
+		switch d := req.Directive.(type) {
+		case *sdkv1.RunRequest_Input:
+			// TODO: parse/format input
+			add("Input", "TODO")
+		case *sdkv1.RunRequest_PollResult:
+			add("Input", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.PollResult.CoroutineState))))
+			// TODO: show call results
+			// TODO: show poll error
+		}
+		if rt.response.ts.IsZero() {
+			add("Status", "Running")
+		} else {
+			if res := rt.response.proto; res != nil {
+				switch d := res.Directive.(type) {
+				case *sdkv1.RunResponse_Exit:
+					var statusStyle lipgloss.Style
+					if res.Status == sdkv1.Status_STATUS_OK {
+						statusStyle = okStyle
+					} else if terminalStatus(res.Status) {
+						statusStyle = errorStyle
+					} else {
+						statusStyle = retryStyle
+					}
+					add("Status", statusStyle.Render(statusString(res.Status)))
+
+					if result := d.Exit.Result; result != nil {
+						if result.Output != nil {
+							add("Output", "TODO")
+						}
+						if result.Error != nil {
+							if result.Error.Message != "" {
+								add("Error", fmt.Sprintf("%s: %s", result.Error.Type, result.Error.Message))
+							} else {
+								add("Error", result.Error.Type)
+							}
+						}
+					}
+					if tailCall := d.Exit.TailCall; tailCall != nil {
+						add("Tail call", tailCall.Function)
+						// TODO: show tail call arguments
+					}
+				case *sdkv1.RunResponse_Poll:
+					add("Status", suspendedStyle.Render("Suspended"))
+					add("Output", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.Poll.CoroutineState))))
+					// TODO: show poll calls
+				}
+			} else if c := rt.response.httpStatus; c != 0 {
+				add("Error", errorStyle.Render(fmt.Sprintf("%d %s", c, http.StatusText(c))))
+			} else if rt.response.err != nil {
+				add("Error", errorStyle.Render(rt.response.err.Error()))
+			}
+
+			latency := rt.response.ts.Sub(rt.response.ts)
+			add("Latency", latency.String())
+		}
+		result.WriteString(view.String())
+	}
+
+	return result.String()
 }
 
 type row struct {
@@ -594,8 +668,10 @@ func (n *functionCall) function() string {
 
 func (n *functionCall) status(now time.Time) (style lipgloss.Style, icon, status string) {
 	icon = pendingIcon
-	if n.running || n.suspended {
+	if n.running {
 		style = pendingStyle
+	} else if n.suspended {
+		style = suspendedStyle
 	} else if n.done {
 		if n.lastStatus == sdkv1.Status_STATUS_OK {
 			style = okStyle
