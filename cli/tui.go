@@ -527,12 +527,21 @@ func (t *TUI) detailView(id DispatchID) string {
 					}
 					if tailCall := d.Exit.TailCall; tailCall != nil {
 						add("Tail call", tailCall.Function)
-						// TODO: show tail call arguments
 					}
 				case *sdkv1.RunResponse_Poll:
 					add("Status", suspendedStyle.Render("Suspended"))
 					add("Output", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.Poll.CoroutineState))))
-					// TODO: show poll calls
+
+					if len(d.Poll.Calls) > 0 {
+						var calls strings.Builder
+						for i, call := range d.Poll.Calls {
+							if i > 0 {
+								calls.WriteString(", ")
+							}
+							calls.WriteString(call.Function)
+						}
+						add("Calls", truncate(50, calls.String()))
+					}
 				}
 			} else if c := rt.response.httpStatus; c != 0 {
 				add("Error", errorStyle.Render(fmt.Sprintf("%d %s", c, http.StatusText(c))))
