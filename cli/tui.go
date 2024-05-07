@@ -742,15 +742,21 @@ func (n *functionCall) attempt() int {
 func (n *functionCall) duration(now time.Time) time.Duration {
 	var duration time.Duration
 	if !n.creationTime.IsZero() {
+		var start time.Time
+		if !n.creationTime.IsZero() && n.creationTime.Before(n.timeline[0].request.ts) {
+			start = n.creationTime
+		} else {
+			start = n.timeline[0].request.ts
+		}
 		var end time.Time
 		if !n.done {
 			end = now
 		} else {
 			end = n.doneTime
 		}
-		duration = end.Sub(n.creationTime).Truncate(time.Millisecond)
+		duration = end.Sub(start).Truncate(time.Millisecond)
 	}
-	return duration
+	return max(duration, 0)
 }
 
 func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
