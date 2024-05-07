@@ -232,13 +232,14 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 						if ctx.Err() != nil {
 							return
 						}
-						switch e := err.(type) {
-						case authError:
-							failure(e.Error())
-							return
-						default:
-							slog.Warn(err.Error())
+						slog.Warn(err.Error())
+
+						if tui != nil {
+							if _, ok := err.(authError); ok {
+								tui.SetError(err)
+							}
 						}
+
 						time.Sleep(1 * time.Second)
 						continue
 					} else if res == nil {
