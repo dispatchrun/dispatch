@@ -613,7 +613,7 @@ func pad(s string, width int) string {
 }
 
 func randomSessionID() string {
-	var b [8]byte
+	var b [16]byte
 	_, err := rand.Read(b[:])
 	if err != nil {
 		panic(err)
