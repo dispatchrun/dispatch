@@ -141,7 +141,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 				if err := recover(); err != nil {
 					// Don't leave behind a dangling process if a panic occurs.
 					if cmd != nil && cmd.Process != nil {
-						cmd.Process.Kill()
+						_ = cmd.Process.Kill()
 					}
 					panic(err)
 				}
