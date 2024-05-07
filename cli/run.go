@@ -130,9 +130,34 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 
 			slog.Info("starting session", "session_id", BridgeSession)
 
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
 			// Execute the command, forwarding the environment and
 			// setting the necessary extra DISPATCH_* variables.
 			cmd := exec.Command(args[0], args[1:]...)
+
+			cleanup := func() {
+				if err := recover(); err != nil {
+					// Don't leave behind a dangling process if a panic occurs.
+					if cmd != nil && cmd.Process != nil {
+						cmd.Process.Kill()
+					}
+					panic(err)
+				}
+			}
+			defer cleanup()
+
+			var wg sync.WaitGroup
+			backgroundGoroutine := func(fn func()) {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					defer cleanup()
+
+					fn()
+				}()
+			}
 
 			cmd.Stdin = os.Stdin
 
@@ -168,19 +193,11 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 			cmd.SysProcAttr = &syscall.SysProcAttr{}
 			setSysProcAttr(cmd.SysProcAttr)
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			var wg sync.WaitGroup
-
 			// Setup signal handler.
 			signals := make(chan os.Signal, 2)
 			signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 			var signaled bool
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-
+			backgroundGoroutine(func() {
 				for {
 					select {
 					case <-ctx.Done():
@@ -194,7 +211,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 						}
 					}
 				}
-			}()
+			})
 
 			// Initialize the TUI.
 			if tui != nil {
@@ -202,10 +219,8 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					tea.WithContext(ctx),
 					tea.WithoutSignalHandler(),
 					tea.WithoutCatchPanics())
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
 
+				backgroundGoroutine(func() {
 					if _, err := p.Run(); err != nil && !errors.Is(err, tea.ErrProgramKilled) {
 						panic(err)
 					}
@@ -214,17 +229,15 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					case signals <- syscall.SIGINT:
 					default:
 					}
-				}()
+				})
 			}
 
 			bridgeSessionURL := fmt.Sprintf("%s/sessions/%s", DispatchBridgeUrl, BridgeSession)
 
 			// Poll for work in the background.
 			var successfulPolls int64
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
 
+			backgroundGoroutine(func() {
 				for ctx.Err() == nil {
 					// Fetch a request from the API.
 					requestID, res, err := poll(ctx, httpClient, bridgeSessionURL)
@@ -265,13 +278,13 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 							// is misbehaving, or a shutdown sequence has been initiated.
 							ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 							defer cancel()
-							if err := cleanup(ctx, httpClient, bridgeSessionURL, requestID); err != nil {
+							if err := deleteRequest(ctx, httpClient, bridgeSessionURL, requestID); err != nil {
 								slog.Debug(err.Error())
 							}
 						}
 					}()
 				}
-			}()
+			})
 
 			if err = cmd.Start(); err != nil {
 				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
@@ -279,10 +292,11 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 
 			// Add a prefix to the local application's logs.
 			appLogPrefix := []byte(appLogPrefixStyle.Render(pad(arg0, prefixWidth)) + logPrefixSeparatorStyle.Render(" | "))
-			go printPrefixedLines(logWriter, stdout, appLogPrefix)
-			go printPrefixedLines(logWriter, stderr, appLogPrefix)
+			backgroundGoroutine(func() { printPrefixedLines(logWriter, stdout, appLogPrefix) })
+			backgroundGoroutine(func() { printPrefixedLines(logWriter, stderr, appLogPrefix) })
 
 			err = cmd.Wait()
+			cmd = nil
 
 			// Cancel the context and wait for all goroutines to return.
 			cancel()
@@ -538,7 +552,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	}
 }
 
-func cleanup(ctx context.Context, client *http.Client, url, requestID string) error {
+func deleteRequest(ctx context.Context, client *http.Client, url, requestID string) error {
 	slog.Debug("cleaning up request", "request_id", requestID)
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
