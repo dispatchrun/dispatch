@@ -46,7 +46,7 @@ var (
 
 	// Styles for function names and statuses in the table.
 	pendingStyle   = lipgloss.NewStyle().Foreground(grayColor)
-	suspendedStyle = lipgloss.NewStyle().Foreground(magentaColor)
+	suspendedStyle = lipgloss.NewStyle().Foreground(grayColor)
 	retryStyle     = lipgloss.NewStyle().Foreground(yellowColor)
 	errorStyle     = lipgloss.NewStyle().Foreground(redColor)
 	okStyle        = lipgloss.NewStyle().Foreground(greenColor)
