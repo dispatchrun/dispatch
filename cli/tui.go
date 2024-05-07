@@ -518,11 +518,11 @@ func (t *TUI) detailView(id DispatchID) string {
 							add("Output", "TODO")
 						}
 						if result.Error != nil {
+							errorMessage := result.Error.Type
 							if result.Error.Message != "" {
-								add("Error", fmt.Sprintf("%s: %s", result.Error.Type, result.Error.Message))
-							} else {
-								add("Error", result.Error.Type)
+								errorMessage += ": " + result.Error.Message
 							}
+							add("Error", statusStyle.Render(errorMessage))
 						}
 					}
 					if tailCall := d.Exit.TailCall; tailCall != nil {
@@ -540,7 +540,7 @@ func (t *TUI) detailView(id DispatchID) string {
 				add("Error", errorStyle.Render(rt.response.err.Error()))
 			}
 
-			latency := rt.response.ts.Sub(rt.response.ts)
+			latency := rt.response.ts.Sub(rt.request.ts)
 			add("Latency", latency.String())
 		}
 		result.WriteString(view.String())
