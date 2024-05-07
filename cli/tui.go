@@ -202,6 +202,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case focusSelectMsg:
 		t.selectMode = true
 		t.selection.SetValue("")
+		cmds = append(cmds, textinput.Blink)
 
 	case tea.WindowSizeMsg:
 		t.windowHeight = msg.Height
@@ -224,10 +225,13 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				t.selectMode = false
 				t.activeTab = functionsTab
+				t.viewport.YOffset = 0 // reset
+				t.tailMode = true
 			case "enter":
 				if t.selected != nil {
 					t.selectMode = false
 					t.activeTab = detailTab
+					t.viewport.YOffset = 0 // reset
 				}
 			case "ctrl+c":
 				return t, tea.Quit
@@ -237,16 +241,18 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				if t.activeTab == detailTab {
 					t.activeTab = functionsTab
+					t.viewport.YOffset = 0 // reset
+					t.tailMode = true
 				} else {
 					return t, tea.Quit
 				}
 			case "ctrl+c", "q":
 				return t, tea.Quit
 			case "s":
+				// Don't accept s/select until at least one function
+				// call has been received.
 				if len(t.calls) > 0 && t.err == nil {
-					// Don't accept s/select until at least one function
-					// call has been received.
-					cmds = append(cmds, focusSelect, textinput.Blink)
+					cmds = append(cmds, focusSelect)
 				}
 			case "t":
 				t.tailMode = true
@@ -256,6 +262,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if t.activeTab == detailTab && t.selected == nil {
 					t.activeTab = functionsTab
 				}
+				t.viewport.YOffset = 0 // reset
+				t.tailMode = true
 			case "up", "down", "left", "right", "pgup", "pgdown", "ctrl+u", "ctrl+d":
 				t.tailMode = false
 			}
@@ -265,14 +273,26 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Forward messages to the text input in select mode.
 	if t.selectMode {
 		t.selection, cmd = t.selection.Update(msg)
-		cmds = append(cmds, cmd)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	// Forward messages to the viewport, e.g. for scroll-back support.
 	t.viewport, cmd = t.viewport.Update(msg)
-	cmds = append(cmds, cmd)
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 
-	return t, tea.Batch(cmds...)
+	cmd = nil
+	switch {
+	case len(cmds) == 1:
+		cmd = cmds[0]
+	case len(cmds) > 1:
+		cmd = tea.Batch(cmds...)
+	}
+
+	return t, cmd
 }
 
 func (t *TUI) View() string {
@@ -329,14 +349,19 @@ func (t *TUI) View() string {
 
 	t.viewport.SetContent(viewportContent)
 
+	// Shrink the viewport so it contains the content and status bar only.
+	footerHeight := 1
+	if statusBarContent != "" {
+		footerHeight = 3
+	}
+	maxViewportHeight := max(t.windowHeight-footerHeight, 8)
+	t.viewport.Height = min(t.viewport.TotalLineCount()+1, maxViewportHeight)
+
 	// Tail the output, unless the user has tried
 	// to scroll back (e.g. with arrow keys).
-	if t.tailMode {
+	if t.tailMode && !t.viewport.AtBottom() {
 		t.viewport.GotoBottom()
 	}
-
-	// Shrink the viewport so it contains the content and status bar only.
-	t.viewport.Height = min(t.viewport.TotalLineCount()+1, t.windowHeight-1)
 
 	var b strings.Builder
 	b.WriteString(t.viewport.View())
