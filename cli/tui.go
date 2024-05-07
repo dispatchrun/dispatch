@@ -406,7 +406,7 @@ func (t *TUI) tableHeaderView(functionColumnWidth int) string {
 		right(8, tableHeaderStyle.Render("Attempt")),
 		right(10, tableHeaderStyle.Render("Duration")),
 		left(1, pendingIcon),
-		left(40, tableHeaderStyle.Render("Status")),
+		left(35, tableHeaderStyle.Render("Status")),
 	}
 	if t.selectMode {
 		idWidth := int(math.Log10(float64(len(t.calls)))) + 1
@@ -430,7 +430,7 @@ func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 		right(8, attemptStr),
 		right(10, durationStr),
 		left(1, r.icon),
-		left(40, r.status),
+		left(35, r.status),
 	}
 
 	id := strconv.Itoa(r.index)
