@@ -5,7 +5,7 @@ import "fmt"
 type authError struct{}
 
 func (authError) Error() string {
-	const message = "Authentication error when contacting the Dispatch API"
+	const message = "Authentication error"
 	var detail string
 	switch DispatchApiKeyLocation {
 	case "env":

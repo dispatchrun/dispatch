@@ -89,6 +89,8 @@ type TUI struct {
 	windowHeight     int
 	selected         *DispatchID
 
+	err error
+
 	mu sync.Mutex
 }
 
@@ -249,7 +251,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "s":
 				// Don't accept s/select until at least one function
 				// call has been received.
-				if len(t.calls) > 0 {
+				if len(t.calls) > 0 && t.err == nil {
 					cmds = append(cmds, focusSelect)
 				}
 			case "t":
@@ -339,6 +341,10 @@ func (t *TUI) View() string {
 			viewportContent = t.logs.String()
 			helpContent = t.logsTabHelp
 		}
+	}
+
+	if t.err != nil {
+		statusBarContent = errorStyle.Render(t.err.Error())
 	}
 
 	t.viewport.SetContent(viewportContent)
@@ -943,6 +949,13 @@ func (t *TUI) Read(b []byte) (int, error) {
 	defer t.mu.Unlock()
 
 	return t.logs.Read(b)
+}
+
+func (t *TUI) SetError(err error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.err = err
 }
 
 func statusString(status sdkv1.Status) string {
