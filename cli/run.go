@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -25,7 +27,6 @@ import (
 	sdkv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/v1"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 )
@@ -119,7 +120,7 @@ previous run.`, defaultEndpoint),
 			}))
 
 			if BridgeSession == "" {
-				BridgeSession = uuid.New().String()
+				BridgeSession = randomSessionID()
 			}
 
 			if !Verbose && tui == nil {
@@ -624,4 +625,15 @@ func pad(s string, width int) string {
 		return s + strings.Repeat(" ", width-len(s))
 	}
 	return s
+}
+
+func randomSessionID() string {
+	var b [16]byte
+	_, err := rand.Read(b[:])
+	if err != nil {
+		panic(err)
+	}
+	var i big.Int
+	i.SetBytes(b[:])
+	return i.Text(62) // base62
 }
