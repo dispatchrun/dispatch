@@ -505,12 +505,17 @@ func (t *TUI) detailView(id DispatchID) string {
 		req := rt.request.proto
 		switch d := req.Directive.(type) {
 		case *sdkv1.RunRequest_Input:
-			add("Input", anyString(d.Input))
+			if rt.request.input == "" {
+				rt.request.input = anyString(d.Input)
+			}
+			add("Input", rt.request.input)
+
 		case *sdkv1.RunRequest_PollResult:
 			add("Input", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.PollResult.CoroutineState))))
 			// TODO: show call results
 			// TODO: show poll error
 		}
+
 		if rt.response.ts.IsZero() {
 			add("Status", "Running")
 		} else {
@@ -528,7 +533,11 @@ func (t *TUI) detailView(id DispatchID) string {
 					add("Status", statusStyle.Render(statusString(res.Status)))
 
 					if result := d.Exit.Result; result != nil {
-						add("Output", anyString(result.Output))
+						if rt.response.output == "" {
+							rt.response.output = anyString(result.Output)
+						}
+						add("Output", rt.response.output)
+
 						if result.Error != nil {
 							errorMessage := result.Error.Type
 							if result.Error.Message != "" {
@@ -540,6 +549,7 @@ func (t *TUI) detailView(id DispatchID) string {
 					if tailCall := d.Exit.TailCall; tailCall != nil {
 						add("Tail call", tailCall.Function)
 					}
+
 				case *sdkv1.RunResponse_Poll:
 					add("Status", suspendedStyle.Render("Suspended"))
 					add("Output", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.Poll.CoroutineState))))
@@ -660,7 +670,7 @@ type functionCall struct {
 	children        map[DispatchID]struct{}
 	orderedChildren []DispatchID
 
-	timeline []roundtrip
+	timeline []*roundtrip
 }
 
 type roundtrip struct {
@@ -671,6 +681,7 @@ type roundtrip struct {
 type runRequest struct {
 	ts    time.Time
 	proto *sdkv1.RunRequest
+	input string
 }
 
 type runResponse struct {
@@ -678,6 +689,7 @@ type runResponse struct {
 	proto      *sdkv1.RunResponse
 	httpStatus int
 	err        error
+	output     string
 }
 
 func (n *functionCall) function() string {
@@ -803,7 +815,7 @@ func (t *TUI) ObserveRequest(now time.Time, req *sdkv1.RunRequest) {
 	if req.ExpirationTime != nil {
 		n.expirationTime = req.ExpirationTime.AsTime()
 	}
-	n.timeline = append(n.timeline, roundtrip{request: runRequest{ts: now, proto: req}})
+	n.timeline = append(n.timeline, &roundtrip{request: runRequest{ts: now, proto: req}})
 	t.calls[id] = n
 
 	// Upsert the parent and link its child, if applicable.
@@ -837,7 +849,7 @@ func (t *TUI) ObserveResponse(now time.Time, req *sdkv1.RunRequest, err error, h
 	id := DispatchID(req.DispatchId)
 	n := t.calls[id]
 
-	rt := &n.timeline[len(n.timeline)-1]
+	rt := n.timeline[len(n.timeline)-1]
 	rt.response.ts = now
 	rt.response.proto = res
 	rt.response.err = err
