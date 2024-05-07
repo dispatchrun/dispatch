@@ -412,7 +412,7 @@ func (t *TUI) tableHeaderView(functionColumnWidth int) string {
 		idWidth := int(math.Log10(float64(len(t.calls)))) + 1
 		columns = append([]string{left(idWidth, strings.Repeat("#", idWidth))}, columns...)
 	}
-	return join(columns...)
+	return join(columns...) + "\n"
 }
 
 func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
@@ -434,16 +434,21 @@ func (t *TUI) tableRowView(r *row, functionColumnWidth int) string {
 	}
 
 	id := strconv.Itoa(r.index)
+	var selected bool
 	if t.selectMode {
 		idWidth := int(math.Log10(float64(len(t.calls)))) + 1
 		paddedID := left(idWidth, id)
 		if input := strings.TrimSpace(t.selection.Value()); input != "" && id == input {
-			paddedID = selectedStyle.Render(paddedID)
+			selected = true
 			t.selected = &r.id
 		}
 		values = append([]string{paddedID}, values...)
 	}
-	return join(values...)
+	result := join(values...)
+	if selected {
+		result = selectedStyle.Render(clearANSI(result))
+	}
+	return result + "\n"
 }
 
 func (t *TUI) detailView(id DispatchID) string {

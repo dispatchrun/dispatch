@@ -48,6 +48,22 @@ func join(rows ...string) string {
 		}
 		b.WriteString(row)
 	}
-	b.WriteByte('\n')
+	return b.String()
+}
+
+func clearANSI(s string) string {
+	var isANSI bool
+	var b strings.Builder
+	for _, c := range s {
+		if c == ansi.Marker {
+			isANSI = true
+		} else if isANSI {
+			if ansi.IsTerminator(c) {
+				isANSI = false
+			}
+		} else {
+			b.WriteRune(c)
+		}
+	}
 	return b.String()
 }
