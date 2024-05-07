@@ -371,7 +371,7 @@ func poll(ctx context.Context, client *http.Client, url string) (string, *http.R
 type FunctionCallObserver interface {
 	// ObserveRequest observes a RunRequest as it passes from the API through
 	// the CLI to the local application.
-	ObserveRequest(*sdkv1.RunRequest)
+	ObserveRequest(time.Time, *sdkv1.RunRequest)
 
 	// ObserveResponse observes a response to the RunRequest.
 	//
@@ -383,7 +383,7 @@ type FunctionCallObserver interface {
 	//
 	// ObserveResponse always comes after a call to ObserveRequest for any given
 	// RunRequest.
-	ObserveResponse(*sdkv1.RunRequest, error, *http.Response, *sdkv1.RunResponse)
+	ObserveResponse(time.Time, *sdkv1.RunRequest, error, *http.Response, *sdkv1.RunResponse)
 }
 
 func invoke(ctx context.Context, client *http.Client, url, requestID string, bridgeGetRes *http.Response, observer FunctionCallObserver) error {
@@ -430,7 +430,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		logger.Info("resuming function", "function", runRequest.Function)
 	}
 	if observer != nil {
-		observer.ObserveRequest(&runRequest)
+		observer.ObserveRequest(time.Now(), &runRequest)
 	}
 
 	// The RequestURI field must be cleared for client.Do() to
@@ -442,9 +442,10 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	endpointReq.URL.Scheme = "http"
 	endpointReq.URL.Host = LocalEndpoint
 	endpointRes, err := client.Do(endpointReq)
+	now := time.Now()
 	if err != nil {
 		if observer != nil {
-			observer.ObserveResponse(&runRequest, err, nil, nil)
+			observer.ObserveResponse(now, &runRequest, err, nil, nil)
 		}
 		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
 	}
@@ -458,7 +459,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	endpointRes.Body.Close()
 	if err != nil {
 		if observer != nil {
-			observer.ObserveResponse(&runRequest, err, endpointRes, nil)
+			observer.ObserveResponse(now, &runRequest, err, endpointRes, nil)
 		}
 		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
 	}
@@ -470,7 +471,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		var runResponse sdkv1.RunResponse
 		if err := proto.Unmarshal(endpointResBody.Bytes(), &runResponse); err != nil {
 			if observer != nil {
-				observer.ObserveResponse(&runRequest, err, endpointRes, nil)
+				observer.ObserveResponse(now, &runRequest, err, endpointRes, nil)
 			}
 			return fmt.Errorf("invalid response from local application endpoint (%s): %v", LocalEndpoint, err)
 		}
@@ -491,13 +492,13 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 			logger.Warn("function call failed", "function", runRequest.Function, "status", statusString(runResponse.Status), "error_type", err.GetType(), "error_message", err.GetMessage())
 		}
 		if observer != nil {
-			observer.ObserveResponse(&runRequest, nil, endpointRes, &runResponse)
+			observer.ObserveResponse(now, &runRequest, nil, endpointRes, &runResponse)
 		}
 	} else {
 		// The response might indicate some other issue, e.g. it could be a 404 if the function can't be found
 		logger.Warn("function call failed", "function", runRequest.Function, "http_status", endpointRes.StatusCode)
 		if observer != nil {
-			observer.ObserveResponse(&runRequest, nil, endpointRes, nil)
+			observer.ObserveResponse(now, &runRequest, nil, endpointRes, nil)
 		}
 	}
 

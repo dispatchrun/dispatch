@@ -10,9 +10,6 @@ import (
 )
 
 var (
-	green = lipgloss.Color("#00FF00")
-	red   = lipgloss.Color("#FF0000")
-
 	dialogBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#874BFD")).
@@ -22,11 +19,9 @@ var (
 			BorderRight(true).
 			BorderBottom(true)
 
-	successStyle = lipgloss.NewStyle().
-			Foreground(green)
+	successStyle = lipgloss.NewStyle().Foreground(greenColor)
 
-	failureStyle = lipgloss.NewStyle().
-			Foreground(red)
+	failureStyle = lipgloss.NewStyle().Foreground(redColor)
 )
 
 type errMsg struct{ error }
