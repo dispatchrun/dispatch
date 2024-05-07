@@ -81,6 +81,7 @@ type TUI struct {
 	activeTab        tab
 	selectMode       bool
 	tailMode         bool
+	logoHelp         string
 	logsTabHelp      string
 	functionsTabHelp string
 	detailTabHelp    string
@@ -137,6 +138,7 @@ var (
 		key.WithHelp("ctrl+c", "quit"),
 	)
 
+	logoKeyMap         = []key.Binding{tabKey, quitKey}
 	functionsTabKeyMap = []key.Binding{tabKey, selectModeKey, quitKey}
 	detailTabKeyMap    = []key.Binding{tabKey, quitKey}
 	logsTabKeyMap      = []key.Binding{tabKey, tailKey, quitKey}
@@ -175,6 +177,7 @@ func (t *TUI) Init() tea.Cmd {
 	t.tailMode = true
 
 	t.activeTab = functionsTab
+	t.logoHelp = t.help.ShortHelpView(logoKeyMap)
 	t.logsTabHelp = t.help.ShortHelpView(logsTabKeyMap)
 	t.functionsTabHelp = t.help.ShortHelpView(functionsTabKeyMap)
 	t.detailTabHelp = t.help.ShortHelpView(detailTabKeyMap)
@@ -238,7 +241,11 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c", "q":
 				return t, tea.Quit
 			case "s":
-				cmds = append(cmds, focusSelect, textinput.Blink)
+				if len(t.calls) > 0 {
+					// Don't accept s/select until at least one function
+					// call has been received.
+					cmds = append(cmds, focusSelect, textinput.Blink)
+				}
 			case "t":
 				t.tailMode = true
 			case "tab":
@@ -272,16 +279,18 @@ func (t *TUI) View() string {
 
 	var viewportContent string
 	var statusBarContent string
-	helpContent := t.functionsTabHelp
+	var helpContent string
 	if !t.ready {
 		viewportContent = t.logoView()
 		statusBarContent = "Initializing..."
+		helpContent = t.logoHelp
 	} else {
 		switch t.activeTab {
 		case functionsTab:
 			if len(t.roots) == 0 {
 				viewportContent = t.logoView()
 				statusBarContent = "Waiting for function calls..."
+				helpContent = t.logoHelp
 			} else {
 				viewportContent = t.functionsView(time.Now())
 				if len(t.calls) == 1 {
@@ -296,6 +305,7 @@ func (t *TUI) View() string {
 					}
 				}
 				statusBarContent += fmt.Sprintf(", %d in-flight", inflightCount)
+				helpContent = t.functionsTabHelp
 			}
 			if t.selectMode {
 				statusBarContent = t.selection.View()
