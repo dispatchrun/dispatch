@@ -505,8 +505,7 @@ func (t *TUI) detailView(id DispatchID) string {
 		req := rt.request.proto
 		switch d := req.Directive.(type) {
 		case *sdkv1.RunRequest_Input:
-			// TODO: parse/format input
-			add("Input", "TODO")
+			add("Input", anyString(d.Input))
 		case *sdkv1.RunRequest_PollResult:
 			add("Input", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.PollResult.CoroutineState))))
 			// TODO: show call results
@@ -529,9 +528,7 @@ func (t *TUI) detailView(id DispatchID) string {
 					add("Status", statusStyle.Render(statusString(res.Status)))
 
 					if result := d.Exit.Result; result != nil {
-						if result.Output != nil {
-							add("Output", "TODO")
-						}
+						add("Output", anyString(result.Output))
 						if result.Error != nil {
 							errorMessage := result.Error.Type
 							if result.Error.Message != "" {
