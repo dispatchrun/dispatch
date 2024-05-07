@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +12,7 @@ var (
 	dialogBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#874BFD")).
+			Margin(1, 2).
 			Padding(1, 2).
 			BorderTop(true).
 			BorderLeft(true).
@@ -119,11 +119,5 @@ func simple(msg string) {
 }
 
 func dialog(msg string, args ...interface{}) {
-	docStyle := lipgloss.NewStyle().Padding(1, 2, 1, 2)
-	var doc strings.Builder
-	doc.WriteString(lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		dialogBoxStyle.Copy().Align(lipgloss.Left).Render(fmt.Sprintf(msg, args...)),
-	))
-	fmt.Println(docStyle.Render(doc.String()))
+	fmt.Println(dialogBoxStyle.Render(fmt.Sprintf(msg, args...)))
 }
