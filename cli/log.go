@@ -25,14 +25,16 @@ var (
 type slogHandler struct {
 	mu     sync.Mutex
 	stream io.Writer
-	level  slog.Level
 
 	parent *slogHandler
 	attrs  []slog.Attr
 }
 
 func (h *slogHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return level >= h.level
+	if Verbose {
+		return level >= slog.LevelDebug
+	}
+	return level >= slog.LevelInfo
 }
 
 func (h *slogHandler) Handle(ctx context.Context, record slog.Record) error {
@@ -89,7 +91,6 @@ func (h *slogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	}
 	return &slogHandler{
 		stream: h.stream,
-		level:  h.level,
 		parent: parent,
 		attrs:  append(slices.Clip(parent.attrs), attrs...),
 	}

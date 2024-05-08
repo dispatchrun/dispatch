@@ -261,6 +261,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "t":
 				t.tailMode = true
+			case "v":
+				Verbose = true
 			case "tab":
 				t.selectMode = false
 				t.activeTab = (t.activeTab + 1) % tabCount
