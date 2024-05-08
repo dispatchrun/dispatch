@@ -2,31 +2,28 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 
-	"github.com/charmbracelet/lipgloss"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-var (
-	anyTypeStyle = lipgloss.NewStyle().Foreground(grayColor)
-	anyNilStyle  = lipgloss.NewStyle().Foreground(grayColor)
-)
-
 func anyString(any *anypb.Any) string {
 	if any == nil {
-		return anyNilStyle.Render("nil")
+		return "nil"
 	}
 	switch any.TypeUrl {
 	case "type.googleapis.com/google.protobuf.BytesValue":
-		if s, err := anyBytesString(any); err == nil && s != "" {
+		s, err := anyBytesString(any)
+		if err != nil {
+			slog.Debug("cannot parse input/output value", "error", err)
+			// fallthrough
+		} else {
 			return s
 		}
-		// Suppress the error; render the type only.
 	}
-	return anyTypeStyle.Render(fmt.Sprintf("<%s>", any.TypeUrl))
-
+	return fmt.Sprintf("%s(?)", any.TypeUrl)
 }
 
 func anyBytesString(any *anypb.Any) (string, error) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -48,11 +49,10 @@ func pythonValueString(value interface{}) (string, error) {
 		return pythonSetString(v)
 	case *pythonArgumentsObject:
 		return pythonArgumentsString(v)
-	case *types.GenericClass:
+	case *genericClass:
 		return fmt.Sprintf("%s.%s", v.Module, v.Name), nil
-	case *types.GenericObject:
-		s, _ := pythonValueString(v.Class)
-		return fmt.Sprintf("%s(?)", s), nil
+	case *genericObject:
+		return pythonGenericObjectString(v)
 	default:
 		return "", fmt.Errorf("unsupported Python value: %T", value)
 	}
@@ -182,6 +182,42 @@ func pythonArgumentsString(a *pythonArgumentsObject) (string, error) {
 
 	b.WriteByte(')')
 	return b.String(), nil
+}
+
+func pythonGenericObjectString(o *genericObject) (string, error) {
+	var b strings.Builder
+	b.WriteString(o.class.Name)
+	b.WriteByte('(')
+
+	for i, e := 0, o.dict.List.Front(); e != nil; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		entry := e.Value.(*types.OrderedDictEntry)
+
+		var keyStr string
+		if s, ok := entry.Key.(string); ok {
+			keyStr = s
+		} else {
+			var err error
+			keyStr, err = pythonValueString(entry.Key)
+			if err != nil {
+				return "", err
+			}
+		}
+		b.WriteString(kwargStyle.Render(keyStr + "="))
+
+		valueStr, err := pythonValueString(entry.Value)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(valueStr)
+
+		e = e.Next()
+	}
+
+	b.WriteByte(')')
+	return b.String(), nil
 
 }
 
@@ -190,7 +226,12 @@ func findPythonClass(module, name string) (interface{}, error) {
 	if module == "dispatch.proto" && name == "Arguments" {
 		return &pythonArgumentsClass{}, nil
 	}
-	return types.NewGenericClass(module, name), nil
+	// If a custom class is encountered, we don't have enough information
+	// to be able to format it. In many cases though (e.g. dataclasses),
+	// it's sufficient to collect and format the module/name of the class,
+	// and then data that arrives through PyDictSettable interface.
+	slog.Debug("deserializing Python class", "module", module, "name", name)
+	return &genericClass{&types.GenericClass{Module: module, Name: name}}, nil
 }
 
 type pythonArgumentsClass struct{}
@@ -220,5 +261,23 @@ func (a *pythonArgumentsObject) PyDictSet(key, value interface{}) error {
 	default:
 		return fmt.Errorf("unexpected key: %v", key)
 	}
+	return nil
+}
+
+type genericClass struct {
+	*types.GenericClass
+}
+
+func (c *genericClass) PyNew(args ...interface{}) (interface{}, error) {
+	return &genericObject{c, types.NewOrderedDict()}, nil
+}
+
+type genericObject struct {
+	class *genericClass
+	dict  *types.OrderedDict
+}
+
+func (o *genericObject) PyDictSet(key, value interface{}) error {
+	o.dict.Set(key, value)
 	return nil
 }
