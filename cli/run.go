@@ -501,7 +501,7 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 					logger.Info("function call succeeded", "function", runRequest.Function)
 				}
 			case *sdkv1.RunResponse_Poll:
-				logger.Info("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls))
+				logger.Info("function yielded", "function", runRequest.Function)
 			}
 		default:
 			err := runResponse.GetExit().GetResult().GetError()
