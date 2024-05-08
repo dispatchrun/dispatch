@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/charmbracelet/lipgloss"
 	"google.golang.org/protobuf/proto"
@@ -20,10 +21,13 @@ func anyString(any *anypb.Any) string {
 	}
 	switch any.TypeUrl {
 	case "type.googleapis.com/google.protobuf.BytesValue":
-		if s, err := anyBytesString(any); err == nil && s != "" {
+		s, err := anyBytesString(any)
+		if err != nil {
+			slog.Debug("cannot parse input/output value", "error", err)
+			// fallthrough
+		} else {
 			return s
 		}
-		// Suppress the error; render the type only.
 	}
 	return anyTypeStyle.Render(fmt.Sprintf("<%s>", any.TypeUrl))
 
