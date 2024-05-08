@@ -35,7 +35,7 @@ To manage your account and functions, visit the [Dispatch Console](https://conso
 ### Create a Function
 
 To create your first **Dispatch** function, see our
-[Getting Started](https://docs.dispatch.run/dispatch/getting-started) guide.
+[Getting Started](https://docs.dispatch.run/getting-started/) guide.
 
 ## Getting Help
 
