@@ -438,6 +438,7 @@ func (t *TUI) functionsView(now time.Time) string {
 
 		rows.reset()
 	}
+	b.WriteByte('\n')
 	return b.String()
 }
 
