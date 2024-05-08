@@ -439,9 +439,13 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 		return fmt.Errorf("invalid response from Dispatch API: %v", err)
 	}
 	logger.Debug("parsed request", "function", runRequest.Function, "dispatch_id", runRequest.DispatchId)
-	switch runRequest.Directive.(type) {
+	switch d := runRequest.Directive.(type) {
 	case *sdkv1.RunRequest_Input:
-		logger.Info("calling function", "function", runRequest.Function)
+		if Verbose {
+			logger.Info("calling function", "function", runRequest.Function, "input", anyString(d.Input))
+		} else {
+			logger.Info("calling function", "function", runRequest.Function)
+		}
 	case *sdkv1.RunRequest_PollResult:
 		logger.Info("resuming function", "function", runRequest.Function)
 	}
@@ -497,11 +501,13 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 			case *sdkv1.RunResponse_Exit:
 				if d.Exit.TailCall != nil {
 					logger.Info("function tail-called", "function", runRequest.Function, "tail_call", d.Exit.TailCall.Function)
+				} else if Verbose && d.Exit.Result != nil {
+					logger.Info("function call succeeded", "function", runRequest.Function, "output", anyString(d.Exit.Result.Output))
 				} else {
 					logger.Info("function call succeeded", "function", runRequest.Function)
 				}
 			case *sdkv1.RunResponse_Poll:
-				logger.Info("function yielded", "function", runRequest.Function, "calls", len(d.Poll.Calls))
+				logger.Info("function yielded", "function", runRequest.Function)
 			}
 		default:
 			err := runResponse.GetExit().GetResult().GetError()
