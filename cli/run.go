@@ -107,16 +107,11 @@ previous run.`, defaultEndpoint),
 			}
 
 			// Add a prefix to Dispatch logs.
-			level := slog.LevelInfo
-			if Verbose {
-				level = slog.LevelDebug
-			}
 			slog.SetDefault(slog.New(&slogHandler{
 				stream: &prefixLogWriter{
 					stream: logWriter,
 					prefix: []byte(dispatchLogPrefixStyle.Render(pad("dispatch", prefixWidth)) + logPrefixSeparatorStyle.Render(" | ")),
 				},
-				level: level,
 			}))
 
 			if BridgeSession == "" {

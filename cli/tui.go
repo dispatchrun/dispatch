@@ -105,14 +105,19 @@ const (
 const tabCount = 3
 
 var (
-	tabKey = key.NewBinding(
+	showFunctionsTabKey = key.NewBinding(
 		key.WithKeys("tab"),
-		key.WithHelp("tab", "switch tab"),
+		key.WithHelp("tab", "show functions"),
+	)
+
+	showLogsTabKey = key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "show logs"),
 	)
 
 	selectModeKey = key.NewBinding(
 		key.WithKeys("s"),
-		key.WithHelp("s", "select"),
+		key.WithHelp("s", "select function"),
 	)
 
 	tailKey = key.NewBinding(
@@ -125,26 +130,26 @@ var (
 		key.WithHelp("q", "quit"),
 	)
 
-	selectKey = key.NewBinding(
+	selectKeys = key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("enter", "select function"),
+		key.WithHelp("0-9+ enter", "select function"),
 	)
 
 	exitSelectKey = key.NewBinding(
 		key.WithKeys("esc"),
-		key.WithHelp("esc", "exit select"),
+		key.WithHelp("esc", "show functions"),
 	)
 
-	quitInSelectKey = key.NewBinding(
-		key.WithKeys("ctrl+c"),
-		key.WithHelp("ctrl+c", "quit"),
+	scrollKeys = key.NewBinding(
+		key.WithKeys("up", "down"),
+		key.WithHelp("↑↓", "scroll"),
 	)
 
-	logoKeyMap         = []key.Binding{tabKey, quitKey}
-	functionsTabKeyMap = []key.Binding{tabKey, selectModeKey, quitKey}
-	detailTabKeyMap    = []key.Binding{tabKey, quitKey}
-	logsTabKeyMap      = []key.Binding{tabKey, tailKey, quitKey}
-	selectKeyMap       = []key.Binding{selectKey, exitSelectKey, tabKey, quitInSelectKey}
+	logoKeyMap         = []key.Binding{showLogsTabKey, quitKey}
+	functionsTabKeyMap = []key.Binding{showLogsTabKey, selectModeKey, scrollKeys, quitKey}
+	detailTabKeyMap    = []key.Binding{showFunctionsTabKey, scrollKeys, quitKey}
+	logsTabKeyMap      = []key.Binding{showFunctionsTabKey, tailKey, scrollKeys, quitKey}
+	selectKeyMap       = []key.Binding{selectKeys, scrollKeys, exitSelectKey}
 )
 
 type tickMsg struct{}
@@ -256,6 +261,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "t":
 				t.tailMode = true
+			case "v":
+				Verbose = true
 			case "tab":
 				t.selectMode = false
 				t.activeTab = (t.activeTab + 1) % tabCount
