@@ -230,7 +230,7 @@ func findPythonClass(module, name string) (interface{}, error) {
 	// to be able to format it. In many cases though (e.g. dataclasses),
 	// it's sufficient to collect and format the module/name of the class,
 	// and then data that arrives through PyDictSettable interface.
-	slog.Debug("parsing Python value", "module", module, "name", name)
+	slog.Debug("deserializing Python class", "module", module, "name", name)
 	return &genericClass{&types.GenericClass{Module: module, Name: name}}, nil
 }
 
