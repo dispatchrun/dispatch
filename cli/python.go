@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -190,6 +191,7 @@ func findPythonClass(module, name string) (interface{}, error) {
 	if module == "dispatch.proto" && name == "Arguments" {
 		return &pythonArgumentsClass{}, nil
 	}
+	slog.Debug("parsing Python value", "module", module, "name", name)
 	return types.NewGenericClass(module, name), nil
 }
 
