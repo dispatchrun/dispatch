@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	logTimeStyle = lipgloss.NewStyle().Foreground(grayColor)
-	logAttrStyle = lipgloss.NewStyle().Foreground(grayColor)
+	logTimeStyle    = lipgloss.NewStyle().Foreground(grayColor)
+	logAttrKeyStyle = lipgloss.NewStyle().Foreground(grayColor)
+	logAttrValStyle = lipgloss.NewStyle().Foreground(defaultColor)
 
 	logDebugStyle = lipgloss.NewStyle().Foreground(defaultColor)
 	logInfoStyle  = lipgloss.NewStyle().Foreground(defaultColor)
@@ -48,12 +49,12 @@ func (h *slogHandler) Handle(ctx context.Context, record slog.Record) error {
 	b.WriteString(record.Message)
 	record.Attrs(func(attr slog.Attr) bool {
 		b.WriteByte(' ')
-		b.WriteString(logAttrStyle.Render(attr.String()))
+		writeAttr(&b, attr)
 		return true
 	})
 	for _, attr := range h.attrs {
 		b.WriteByte(' ')
-		b.WriteString(logAttrStyle.Render(attr.String()))
+		writeAttr(&b, attr)
 	}
 	b.WriteByte('\n')
 
@@ -74,6 +75,11 @@ func levelString(level slog.Level) string {
 	default:
 		return level.String()
 	}
+}
+
+func writeAttr(b *bytes.Buffer, attr slog.Attr) {
+	b.WriteString(logAttrKeyStyle.Render(attr.Key + "="))
+	b.WriteString(logAttrValStyle.Render(attr.Value.String()))
 }
 
 func (h *slogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
