@@ -40,8 +40,10 @@ func (h *slogHandler) Handle(ctx context.Context, record slog.Record) error {
 
 	var b bytes.Buffer
 	b.WriteString(logTimeStyle.Render(record.Time.Format("2006-01-02 15:04:05.000")))
-	b.WriteByte(' ')
-	b.WriteString(levelString(record.Level))
+	if record.Level >= slog.LevelWarn {
+		b.WriteByte(' ')
+		b.WriteString(levelString(record.Level))
+	}
 	b.WriteByte(' ')
 	b.WriteString(record.Message)
 	record.Attrs(func(attr slog.Attr) bool {
