@@ -605,9 +605,13 @@ func (t *TUI) detailView(id DispatchID) string {
 					}
 				}
 			} else if c := rt.response.httpStatus; c != 0 {
-				add("Error", errorStyle.Render(fmt.Sprintf("%d %s", c, http.StatusText(c))))
+				style := errorStyle
+				if !terminalHTTPStatusCode(c) {
+					style = retryStyle
+				}
+				add("Error", style.Render(fmt.Sprintf("%d %s", c, http.StatusText(c))))
 			} else if rt.response.err != nil {
-				add("Error", errorStyle.Render(rt.response.err.Error()))
+				add("Error", retryStyle.Render(rt.response.err.Error()))
 			}
 
 			latency := rt.response.ts.Sub(rt.request.ts)

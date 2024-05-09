@@ -459,10 +459,11 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	endpointRes, err := client.Do(endpointReq)
 	now := time.Now()
 	if err != nil {
+		err = fmt.Errorf("can't connect to %s: %v (check that -e,--endpoint is correct)", LocalEndpoint, tidyErr(err))
 		if observer != nil {
 			observer.ObserveResponse(now, &runRequest, err, nil, nil)
 		}
-		return fmt.Errorf("failed to contact local application endpoint (%s): %v. Please check that -e,--endpoint is correct.", LocalEndpoint, err)
+		return err
 	}
 
 	// Buffer the response body in memory.
@@ -473,10 +474,11 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	_, err = io.Copy(endpointResBody, endpointRes.Body)
 	endpointRes.Body.Close()
 	if err != nil {
+		err = fmt.Errorf("read error from %s: %v", LocalEndpoint, tidyErr(err))
 		if observer != nil {
 			observer.ObserveResponse(now, &runRequest, err, endpointRes, nil)
 		}
-		return fmt.Errorf("failed to read response from local application endpoint (%s): %v", LocalEndpoint, err)
+		return err
 	}
 	endpointRes.Body = io.NopCloser(endpointResBody)
 	endpointRes.ContentLength = int64(endpointResBody.Len())
@@ -485,10 +487,11 @@ func invoke(ctx context.Context, client *http.Client, url, requestID string, bri
 	if endpointRes.StatusCode == http.StatusOK && endpointRes.Header.Get("Content-Type") == "application/proto" {
 		var runResponse sdkv1.RunResponse
 		if err := proto.Unmarshal(endpointResBody.Bytes(), &runResponse); err != nil {
+			err = fmt.Errorf("invalid response from %s: %v", LocalEndpoint, tidyErr(err))
 			if observer != nil {
 				observer.ObserveResponse(now, &runRequest, err, endpointRes, nil)
 			}
-			return fmt.Errorf("invalid response from local application endpoint (%s): %v", LocalEndpoint, err)
+			return err
 		}
 		switch runResponse.Status {
 		case sdkv1.Status_STATUS_OK:
@@ -637,4 +640,19 @@ func randomSessionID() string {
 	var i big.Int
 	i.SetBytes(b[:])
 	return i.Text(62) // base62
+}
+
+var (
+	errConnectionRefused = errors.New("connection refused")
+)
+
+func tidyErr(err error) error {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		switch errno {
+		case syscall.ECONNREFUSED:
+			return errConnectionRefused
+		}
+	}
+	return err
 }
