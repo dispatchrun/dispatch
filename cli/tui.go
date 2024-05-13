@@ -438,7 +438,9 @@ func (t *TUI) functionsView(now time.Time) string {
 		functionColumnWidth := max(9, min(50, maxFunctionWidth))
 
 		// Render the table.
-		b.WriteString(t.tableHeaderView(functionColumnWidth))
+		if i == 0 {
+			b.WriteString(t.tableHeaderView(functionColumnWidth))
+		}
 		for i := range rows.rows {
 			b.WriteString(t.tableRowView(&rows.rows[i], functionColumnWidth))
 		}
