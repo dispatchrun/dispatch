@@ -1,4 +1,14 @@
-# Welcome to Dispatch!
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/dispatchrun/.github/blob/main/profile/dispatch_logo_dark.png?raw=true">
+    <img alt="dispatch logo" src="https://github.com/dispatchrun/.github/blob/main/profile/dispatch_logo_light.png?raw=true" height="64">
+  </picture>
+</p>
+
+<hr />
+
+[![Test](https://github.com/dispatchrun/dispatch/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/dispatchrun/dispatch/actions/workflows/test.yml)
+[![Reference](https://img.shields.io/badge/API-Reference-lightblue.svg)](https://python.dispatch.run/main/reference/dispatch/)
 
 **Dispatch** is a platform for developing scalable & reliable distributed systems.
 
