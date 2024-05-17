@@ -7,7 +7,7 @@
 
 <hr />
 
-[![Test](https://github.com/dispatchrun/dispatch/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/dispatchrun/dispatch/actions/workflows/test.yml)
+[![Build](https://github.com/dispatchrun/dispatch/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/dispatchrun/dispatch/actions/workflows/build.yml)
 [![Reference](https://img.shields.io/badge/API-Reference-lightblue.svg)](https://python.dispatch.run/main/reference/dispatch/)
 
 **Dispatch** is a platform for developing scalable & reliable distributed systems.
