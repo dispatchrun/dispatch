@@ -84,6 +84,9 @@ previous run.`, defaultEndpoint),
 		SilenceUsage: true,
 		GroupID:      "dispatch",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := loadEnvFromFile(DotEnvFilePath); err != nil {
+				return err
+			}
 			return runConfigFlow()
 		},
 		RunE: func(c *cobra.Command, args []string) error {

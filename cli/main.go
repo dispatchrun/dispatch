@@ -24,6 +24,7 @@ Support: support@dispatch.run
 		},
 	}
 	cmd.PersistentFlags().StringVarP(&DispatchApiKeyCli, "api-key", "k", "", "Dispatch API key (env: DISPATCH_API_KEY)")
+	cmd.PersistentFlags().StringVarP(&DotEnvFilePath, "env-file", "", "", "Path to .env file")
 
 	cmd.AddGroup(&cobra.Group{
 		ID:    "management",

@@ -22,6 +22,9 @@ account or login to an existing account.
 
 After authenticating with Dispatch, the API key will be persisted locally.`,
 		GroupID: "management",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return loadEnvFromFile(DotEnvFilePath)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			token, err := generateToken()
 			if err != nil {

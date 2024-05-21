@@ -23,9 +23,15 @@ var (
 	DispatchConsoleUrl       string
 
 	DispatchConfigPath string
+
+	DotEnvFilePath string
 )
 
 func init() {
+	setVariables()
+}
+
+func setVariables() {
 	DispatchApiUrl = os.Getenv("DISPATCH_API_URL")
 	if DispatchApiUrl == "" {
 		DispatchApiUrl = "https://api.dispatch.run"
