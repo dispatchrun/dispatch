@@ -14,8 +14,8 @@ func loadEnvFromFile(path string) error {
 		if err != nil {
 			return fmt.Errorf("failed to get absolute path for %s: %v", path, err)
 		}
-		if godotenv.Load(path) != nil {
-			return fmt.Errorf("failed to load env file from %s", absolutePath)
+		if err := godotenv.Load(path); err != nil {
+			return fmt.Errorf("failed to load env file from %s: %v", absolutePath, err)
 		}
 		slog.Info("loading environment variables from file", "path", absolutePath)
 	}
