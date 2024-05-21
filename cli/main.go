@@ -19,6 +19,9 @@ Documentation: https://docs.dispatch.run
 Discord: https://dispatch.run/discord
 Support: support@dispatch.run
 `,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return loadEnvFromFile(DotEnvFilePath)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
