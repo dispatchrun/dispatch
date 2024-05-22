@@ -19,11 +19,15 @@ Documentation: https://docs.dispatch.run
 Discord: https://dispatch.run/discord
 Support: support@dispatch.run
 `,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return loadEnvFromFile(DotEnvFilePath)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
 	cmd.PersistentFlags().StringVarP(&DispatchApiKeyCli, "api-key", "k", "", "Dispatch API key (env: DISPATCH_API_KEY)")
+	cmd.PersistentFlags().StringVarP(&DotEnvFilePath, "env-file", "", "", "Path to .env file")
 
 	cmd.AddGroup(&cobra.Group{
 		ID:    "management",

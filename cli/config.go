@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
+	"github.com/joho/godotenv"
 	"github.com/pelletier/go-toml/v2"
 	"golang.org/x/term"
 )
@@ -23,9 +25,15 @@ var (
 	DispatchConsoleUrl       string
 
 	DispatchConfigPath string
+
+	DotEnvFilePath string
 )
 
 func init() {
+	setVariables()
+}
+
+func setVariables() {
 	DispatchApiUrl = os.Getenv("DISPATCH_API_URL")
 	if DispatchApiUrl == "" {
 		DispatchApiUrl = "https://api.dispatch.run"
@@ -142,5 +150,20 @@ func runConfigFlow() error {
 		}
 		return fmt.Errorf("Please run `dispatch login` to login to Dispatch. Alternatively, set the DISPATCH_API_KEY environment variable, or provide an --api-key (-k) on the command line.")
 	}
+	return nil
+}
+
+func loadEnvFromFile(path string) error {
+	if path != "" {
+		absolutePath, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path for %s: %v", path, err)
+		}
+		if err := godotenv.Load(path); err != nil {
+			return fmt.Errorf("failed to load env file from %s: %v", absolutePath, err)
+		}
+		slog.Info("loading environment variables from file", "path", absolutePath)
+	}
+	setVariables()
 	return nil
 }
