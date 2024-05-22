@@ -23,8 +23,6 @@ var (
 	DispatchConsoleUrl       string
 
 	DispatchConfigPath string
-
-	DotEnvFilePath string
 )
 
 func init() {

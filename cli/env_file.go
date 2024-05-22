@@ -8,6 +8,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var DotEnvFilePath string
+
 func loadEnvFromFile(path string) error {
 	if path != "" {
 		absolutePath, err := filepath.Abs(path)
