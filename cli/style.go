@@ -2,10 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -110,12 +112,12 @@ func success(msg string) {
 	fmt.Println(successStyle.Render(msg))
 }
 
-func failure(msg string) {
-	fmt.Println(failureStyle.Render(msg) + "\n")
+func failure(cmd *cobra.Command, msgs ...string) {
+	cmd.Println(failureStyle.Render(strings.Join(msgs, " ")) + "\n")
 }
 
-func simple(msg string) {
-	fmt.Println(msg)
+func simple(cmd *cobra.Command, msgs ...string) {
+	cmd.Println(strings.Join(msgs, " "))
 }
 
 func dialog(msg string, args ...interface{}) {
