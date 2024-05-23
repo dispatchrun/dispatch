@@ -43,15 +43,10 @@ func Main() error {
 		Title: "Dispatch Commands:",
 	})
 
-	// Account Management Commands
 	cmd.AddCommand(loginCommand())
 	cmd.AddCommand(switchCommand())
 	cmd.AddCommand(verificationCommand())
-
-	// Dispatch Commands
 	cmd.AddCommand(runCommand())
-
-	// Additional Commands
 	cmd.AddCommand(versionCommand())
 
 	return cmd.ExecuteContext(context.Background())

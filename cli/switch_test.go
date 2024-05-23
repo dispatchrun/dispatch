@@ -9,19 +9,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type (
-	testCase struct {
-		name          string
-		args          []string
-		configExists  bool
-		configContent string
-	}
+type testCase struct {
+	name          string
+	args          []string
+	configExists  bool
+	configContent string
+}
 
-	expectedOutput struct {
-		stdout string
-		stderr string
-	}
-)
+type expectedOutput struct {
+	stdout string
+	stderr string
+}
 
 func TestSwitchCommand(t *testing.T) {
 	tcs := []struct {
@@ -127,6 +125,11 @@ func TestSwitchCommand(t *testing.T) {
 	}
 }
 
+// The global variables make running a bunch of unit tests in parallel more
+// challenging, but if each CLI command takes in an "IO" interface with methods
+// to read/write or make network calls then mocking, running tests in
+// parallel, and focusing on the logic rather than environment setup would
+// be a lot easier.
 func setupConfig(t *testing.T, tc testCase) string {
 	tempDir, err := os.MkdirTemp("", "dispatch-test")
 	assert.NoError(t, err)
