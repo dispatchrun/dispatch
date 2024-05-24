@@ -54,7 +54,7 @@ If the browser does not open, please visit the following URL:
 			}
 
 			if loginErr != nil {
-				failure("Authentication failed. Please contact support at support@dispatch.run")
+				failure(cmd, "Authentication failed. Please contact support at support@dispatch.run")
 				fmt.Printf("Error: %s\n", loginErr)
 			} else if loggedIn {
 				success("Authentication successful")
