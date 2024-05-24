@@ -1,0 +1,6 @@
+# Warning = ''
+active = 'x-s-org'
+
+[Organizations]
+[Organizations.x-s-org]
+api_key = 'x'

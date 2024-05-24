@@ -17,14 +17,14 @@ when running a Dispatch application locally.
 To manage your organizations, visit the Dispatch Console: https://console.dispatch.run/`
 )
 
-func switchCommand() *cobra.Command {
+func switchCommand(configPath string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "switch [organization]",
 		Short:   "Switch between organizations",
 		Long:    SwitchCmdLong,
 		GroupID: "management",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := LoadConfig(DispatchConfigPath)
+			cfg, err := LoadConfig(configPath)
 			if err != nil {
 				if !errors.Is(err, os.ErrNotExist) {
 					failure(cmd, fmt.Sprintf("Failed to load Dispatch configuration: %v", err))
@@ -59,7 +59,7 @@ func switchCommand() *cobra.Command {
 
 			simple(cmd, fmt.Sprintf("Switched to organization: %v", name))
 			cfg.Active = name
-			return CreateConfig(DispatchConfigPath, cfg)
+			return CreateConfig(configPath, cfg)
 		},
 	}
 	return cmd

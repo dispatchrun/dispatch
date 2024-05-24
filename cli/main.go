@@ -43,8 +43,9 @@ func Main() error {
 		Title: "Dispatch Commands:",
 	})
 
+	// Passing the global variables to the commands make testing in parallel possible.
 	cmd.AddCommand(loginCommand())
-	cmd.AddCommand(switchCommand())
+	cmd.AddCommand(switchCommand(DispatchConfigPath))
 	cmd.AddCommand(verificationCommand())
 	cmd.AddCommand(runCommand())
 	cmd.AddCommand(versionCommand())

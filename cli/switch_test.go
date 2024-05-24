@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -93,28 +94,18 @@ func TestSwitchCommand(t *testing.T) {
 	}
 
 	for _, tc := range tcs {
+		tc := tc
 		t.Run(tc.in.name, func(t *testing.T) {
-			// Set up the config file
+			t.Parallel()
+
 			configPath := setupConfig(t, tc.in)
-
-			// Set the DispatchConfigPath (global variable)
-			DispatchConfigPath = configPath
-
-			// Create buffer writer
 			stdout := &bytes.Buffer{}
 			stderr := &bytes.Buffer{}
-
-			// Create command in test
-			cmd := switchCommand()
-
-			// Set streams for command
+			cmd := switchCommand(configPath)
 			cmd.SetOut(stdout)
 			cmd.SetErr(stderr)
-
-			// Set args for command
 			cmd.SetArgs(tc.in.args)
 
-			// Execute command
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("Received unexpected error: %v", err)
 			}
@@ -125,13 +116,10 @@ func TestSwitchCommand(t *testing.T) {
 	}
 }
 
-// The global variables make running a bunch of unit tests in parallel more
-// challenging, but if each CLI command takes in an "IO" interface with methods
-// to read/write or make network calls then mocking, running tests in
-// parallel, and focusing on the logic rather than environment setup would
-// be a lot easier.
 func setupConfig(t *testing.T, tc testCase) string {
-	tempDir, err := os.MkdirTemp("", "dispatch-test")
+	// Using the test case name as the temp directory
+	// name allows for parallel testing without conflicts.
+	tempDir, err := os.MkdirTemp("", fmt.Sprintf("dispatch-test-%s", tc.name))
 	assert.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(tempDir) })
 
