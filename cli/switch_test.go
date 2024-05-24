@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -117,19 +116,13 @@ func TestSwitchCommand(t *testing.T) {
 }
 
 func setupConfig(t *testing.T, tc testCase) string {
-	// Using the test case name as the temp directory
-	// name allows for parallel testing without conflicts.
-	tempDir, err := os.MkdirTemp("", fmt.Sprintf("dispatch-test-%s", tc.name))
-	assert.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(tempDir) })
-
+	tempDir := t.TempDir() // unique temp dir for each test and cleaned up after test finishes
 	configPath := filepath.Join(tempDir, "config.yaml")
 	if tc.configExists {
-		err = os.WriteFile(configPath, []byte(tc.configContent), 0600)
+		err := os.WriteFile(configPath, []byte(tc.configContent), 0600)
 		assert.NoError(t, err)
 	} else {
-		os.Remove(DispatchConfigPath)
+		os.Remove(configPath)
 	}
-
 	return configPath
 }
