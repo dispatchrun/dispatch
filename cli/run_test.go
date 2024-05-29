@@ -21,9 +21,9 @@ func TestRunCommand(t *testing.T) {
 	t.Run("Run with non-existent env file", func(t *testing.T) {
 		t.Parallel()
 
-		buff, msg, err := execRunCommand(&[]string{}, "run", "--env-file", "non-existent.env", "--", "echo", "hello")
+		buff, err := execRunCommand(&[]string{}, "run", "--env-file", "non-existent.env", "--", "echo", "hello")
 		if err != nil {
-			t.Fatalf(msg, err)
+			t.Fatal(err.Error())
 		}
 
 		assert.Regexp(t, "Error: failed to load env file from .+/dispatch/cli/non-existent.env: open non-existent.env: no such file or directory\n", buff.String())
@@ -38,9 +38,9 @@ func TestRunCommand(t *testing.T) {
 			t.Fatalf("Failed to write env file: %v", err)
 		}
 
-		buff, msg, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
+		buff, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
 		if err != nil {
-			t.Fatalf(msg, err)
+			t.Fatal(err.Error())
 		}
 
 		result, found := findEnvVariableInLogs(&buff)
@@ -56,9 +56,9 @@ func TestRunCommand(t *testing.T) {
 		// Set environment variables
 		envVars := []string{"CHARACTER=morty_smith"}
 
-		buff, msg, err := execRunCommand(&envVars, "run", "--", "printenv", "CHARACTER")
+		buff, err := execRunCommand(&envVars, "run", "--", "printenv", "CHARACTER")
 		if err != nil {
-			t.Fatalf(msg, err)
+			t.Fatal(err.Error())
 		}
 
 		result, found := findEnvVariableInLogs(&buff)
@@ -79,9 +79,9 @@ func TestRunCommand(t *testing.T) {
 
 		// Set environment variables
 		envVars := []string{"CHARACTER=morty_smith"}
-		buff, msg, err := execRunCommand(&envVars, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
+		buff, err := execRunCommand(&envVars, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
 		if err != nil {
-			t.Fatalf(msg, err)
+			t.Fatal(err.Error())
 		}
 
 		result, found := findEnvVariableInLogs(&buff)
@@ -100,13 +100,14 @@ func TestRunCommand(t *testing.T) {
 
 		envFile, err := createEnvFile(t.TempDir(), []byte("CHARACTER=rick_sanchez"))
 		defer os.Remove(envFile)
+
 		if err != nil {
 			t.Fatalf("Failed to write env file: %v", err)
 		}
 
-		buff, msg, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
+		buff, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
 		if err != nil {
-			t.Fatalf(msg, err)
+			t.Fatal(err.Error())
 		}
 
 		result, found := findEnvVariableInLogs(&buff)
@@ -117,7 +118,7 @@ func TestRunCommand(t *testing.T) {
 	})
 }
 
-func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, string, error) {
+func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, error) {
 	// Create a context with a timeout to ensure the process doesn't run indefinitely
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -139,18 +140,18 @@ func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, string, err
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
-		return errBuf, "Failed to start command: &v", err
+		return errBuf, fmt.Errorf("Failed to start command: %w", err)
 	}
 
 	// Wait for the command to finish or for the context to timeout
 	if err := cmd.Wait(); err != nil {
 		// Check if the error is due to context timeout (command running too long)
 		if ctx.Err() == context.DeadlineExceeded {
-			return errBuf, "Command timed out", err
+			return errBuf, fmt.Errorf("Command timed out: %w", err)
 		}
 	}
 
-	return errBuf, "", nil
+	return errBuf, nil
 }
 
 func createEnvFile(path string, content []byte) (string, error) {
