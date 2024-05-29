@@ -21,238 +21,157 @@ func TestRunCommand(t *testing.T) {
 	t.Run("Run with non-existent env file", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a context with a timeout to ensure the process doesn't run indefinitely
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-
-		// Set up the command
-		cmd := exec.CommandContext(ctx, dispatchBinary, "run", "--env-file", "non-existent.env", "--", "echo", "hello")
-
-		// Capture the standard error
-		var errBuf bytes.Buffer
-		cmd.Stderr = &errBuf
-
-		// Start the command
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("Failed to start command: %v", err)
+		buff, msg, err := execRunCommand(&[]string{}, "run", "--env-file", "non-existent.env", "--", "echo", "hello")
+		if err != nil {
+			t.Fatalf(msg, err)
 		}
 
-		// Wait for the command to finish or for the context to timeout
-		if err := cmd.Wait(); err != nil {
-			// Check if the error is due to context timeout (command running too long)
-			if ctx.Err() == context.DeadlineExceeded {
-				t.Fatalf("Command timed out")
-			}
-		}
-
-		assert.Regexp(t, "Error: failed to load env file from .+: open .+: no such file or directory\n", errBuf.String())
+		assert.Regexp(t, "Error: failed to load env file from .+: open .+: no such file or directory\n", buff.String())
 	})
+
 	t.Run("Run with env file", func(t *testing.T) {
 		t.Parallel()
 
-		tempDir := t.TempDir()
-		envFile := filepath.Join(tempDir, "test.env")
-		err := os.WriteFile(envFile, []byte("RICK_SANCHEZ=pickle"), 0600)
+		envFile, err := createEnvFile(t.TempDir())
+		defer os.Remove(envFile)
 		if err != nil {
 			t.Fatalf("Failed to write env file: %v", err)
 		}
 
-		// Create a context with a timeout to ensure the process doesn't run indefinitely
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-
-		// Set up the command
-		cmd := exec.CommandContext(ctx, dispatchBinary, "run", "--env-file", envFile, "--", "printenv", "RICK_SANCHEZ")
-
-		// Capture the standard error
-		var errBuf bytes.Buffer
-		cmd.Stderr = &errBuf
-
-		// Start the command
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("Failed to start command: %v", err)
+		buff, msg, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "RICK_SANCHEZ")
+		if err != nil {
+			t.Fatalf(msg, err)
 		}
 
-		// Wait for the command to finish or for the context to timeout
-		if err := cmd.Wait(); err != nil {
-			// Check if the error is due to context timeout (command running too long)
-			if ctx.Err() == context.DeadlineExceeded {
-				t.Fatalf("Command timed out")
-			}
-		}
-
-		var result string
-		found := false
-		// Split the log into lines
-		lines := strings.Split(errBuf.String(), "\n")
-		// Iterate over each line and check for the condition
-		for _, line := range lines {
-			if strings.Contains(line, "printenv | ") {
-				result = strings.Split(line, "printenv | ")[1]
-				found = true
-				break
-			}
-		}
+		result, found := findEnvVariableInLogs(&buff)
 		if !found {
 			t.Fatal("Expected printenv in the output")
 		}
 		assert.Equal(t, "pickle", result, fmt.Sprintf("Expected 'printenv | pickle' in the output, got 'printenv | %s'", result))
 	})
+
 	t.Run("Run with env variable", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a context with a timeout to ensure the process doesn't run indefinitely
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		// Set up the command
-		cmd := exec.CommandContext(ctx, dispatchBinary, "run", "--", "printenv", "MORTY_SMITH")
-
 		// Set environment variables
-		cmd.Env = append(os.Environ(), "MORTY_SMITH=evil_morty")
+		envVars := []string{"RICK_SANCHEZ=not_pickle"}
 
-		// Capture the standard error
-		var errBuf bytes.Buffer
-		cmd.Stderr = &errBuf
-
-		// Start the command
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("Failed to start command: %v", err)
+		buff, msg, err := execRunCommand(&envVars, "run", "--", "printenv", "RICK_SANCHEZ")
+		if err != nil {
+			t.Fatalf(msg, err)
 		}
 
-		// Wait for the command to finish or for the context to timeout
-		if err := cmd.Wait(); err != nil {
-			// Check if the error is due to context timeout (command running too long)
-			if ctx.Err() == context.DeadlineExceeded {
-				t.Fatalf("Command timed out")
-			}
-		}
-
-		var result string
-		found := false
-		// Split the log into lines
-		lines := strings.Split(errBuf.String(), "\n")
-		// Iterate over each line and check for the condition
-		for _, line := range lines {
-			if strings.Contains(line, "printenv | ") {
-				result = strings.Split(line, "printenv | ")[1]
-				found = true
-				break
-			}
-		}
+		result, found := findEnvVariableInLogs(&buff)
 		if !found {
 			t.Fatal("Expected printenv in the output")
 		}
-		assert.Equal(t, "evil_morty", result, fmt.Sprintf("Expected 'printenv | evil_morty' in the output, got 'printenv | %s'", result))
+		assert.Equal(t, "not_pickle", result, fmt.Sprintf("Expected 'printenv | not_pickle' in the output, got 'printenv | %s'", result))
 	})
 
 	t.Run("Run with env variable in command line has priority over the one in the env file", func(t *testing.T) {
 		t.Parallel()
 
-		tempDir := t.TempDir()
-		envFile := filepath.Join(tempDir, "test.env")
-		err := os.WriteFile(envFile, []byte("RICK_SANCHEZ=pickle"), 0600)
+		envFile, err := createEnvFile(t.TempDir())
+		defer os.Remove(envFile)
 		if err != nil {
 			t.Fatalf("Failed to write env file: %v", err)
 		}
 
-		// Create a context with a timeout to ensure the process doesn't run indefinitely
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-
-		// Set up the command
-		cmd := exec.CommandContext(ctx, dispatchBinary, "run", "--env-file", envFile, "--", "printenv", "RICK_SANCHEZ")
-
 		// Set environment variables
-		cmd.Env = append(os.Environ(), "RICK_SANCHEZ=not_pickle")
-
-		// Capture the standard error
-		var errBuf bytes.Buffer
-		cmd.Stderr = &errBuf
-
-		// Start the command
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("Failed to start command: %v", err)
+		envVars := []string{"RICK_SANCHEZ=not_pickle"}
+		buff, msg, err := execRunCommand(&envVars, "run", "--env-file", envFile, "--", "printenv", "RICK_SANCHEZ")
+		if err != nil {
+			t.Fatalf(msg, err)
 		}
 
-		// Wait for the command to finish or for the context to timeout
-		if err := cmd.Wait(); err != nil {
-			// Check if the error is due to context timeout (command running too long)
-			if ctx.Err() == context.DeadlineExceeded {
-				t.Fatalf("Command timed out")
-			}
-		}
-
-		var result string
-		found := false
-		// Split the log into lines
-		lines := strings.Split(errBuf.String(), "\n")
-		// Iterate over each line and check for the condition
-		for _, line := range lines {
-			if strings.Contains(line, "printenv | ") {
-				result = strings.Split(line, "printenv | ")[1]
-				found = true
-				break
-			}
-		}
+		result, found := findEnvVariableInLogs(&buff)
 		if !found {
 			t.Fatal("Expected 'printenv | pickle' in the output")
 		}
 		assert.Equal(t, "not_pickle", result, fmt.Sprintf("Expected 'printenv | not_pickle' in the output, got 'printenv | %s'", result))
 	})
+
 	t.Run("Run with env variable in local env vars has priority over the one in the env file", func(t *testing.T) {
 		// Do not use t.Parallel() here as we are manipulating the environment!
 
 		// Set environment variables
 		os.Setenv("RICK_SANCHEZ", "not_pickle")
+		defer os.Unsetenv("RICK_SANCHEZ")
 
-		tempDir := t.TempDir()
-		envFile := filepath.Join(tempDir, "test.env")
-		err := os.WriteFile(envFile, []byte("RICK_SANCHEZ=pickle"), 0600)
+		envFile, err := createEnvFile(t.TempDir())
+		defer os.Remove(envFile)
 		if err != nil {
 			t.Fatalf("Failed to write env file: %v", err)
 		}
 
-		// Create a context with a timeout to ensure the process doesn't run indefinitely
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-		defer os.Unsetenv("RICK_SANCHEZ")
-
-		// Set up the command
-		cmd := exec.CommandContext(ctx, dispatchBinary, "run", "--env-file", envFile, "--", "printenv", "RICK_SANCHEZ")
-
-		// Capture the standard error
-		var errBuf bytes.Buffer
-		cmd.Stderr = &errBuf
-
-		// Start the command
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("Failed to start command: %v", err)
+		buff, msg, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "RICK_SANCHEZ")
+		if err != nil {
+			t.Fatalf(msg, err)
 		}
 
-		// Wait for the command to finish or for the context to timeout
-		if err := cmd.Wait(); err != nil {
-			// Check if the error is due to context timeout (command running too long)
-			if ctx.Err() == context.DeadlineExceeded {
-				t.Fatalf("Command timed out")
-			}
-		}
-
-		var result string
-		found := false
-		// Split the log into lines
-		lines := strings.Split(errBuf.String(), "\n")
-		// Iterate over each line and check for the condition
-		for _, line := range lines {
-			if strings.Contains(line, "printenv | ") {
-				result = strings.Split(line, "printenv | ")[1]
-				found = true
-				break
-			}
-		}
+		result, found := findEnvVariableInLogs(&buff)
 		if !found {
 			t.Fatal("Expected in the output")
 		}
 		assert.Equal(t, "not_pickle", result, fmt.Sprintf("Expected 'printenv | not_pickle' in the output, got 'printenv | %s'", result))
 	})
+}
+
+func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, string, error) {
+	// Create a context with a timeout to ensure the process doesn't run indefinitely
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Set up the command
+	cmd := exec.CommandContext(ctx, dispatchBinary, arg...)
+
+	if len(*envVars) != 0 {
+		// Set environment variables
+		cmd.Env = append(os.Environ(), *envVars...)
+	}
+
+	// Capture the standard error
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return errBuf, "Failed to start command: &v", err
+		// t.Fatalf("Failed to start command: %v", err)
+	}
+
+	// Wait for the command to finish or for the context to timeout
+	if err := cmd.Wait(); err != nil {
+		// Check if the error is due to context timeout (command running too long)
+		if ctx.Err() == context.DeadlineExceeded {
+			return errBuf, "Command timed out", err
+			// t.Fatalf("Command timed out")
+		}
+	}
+
+	return errBuf, "", nil
+}
+
+func createEnvFile(path string) (string, error) {
+	envFile := filepath.Join(path, "test.env")
+	err := os.WriteFile(envFile, []byte("RICK_SANCHEZ=pickle"), 0600)
+	return envFile, err
+}
+
+func findEnvVariableInLogs(errBuf *bytes.Buffer) (string, bool) {
+	var result string
+	found := false
+
+	// Split the log into lines
+	lines := strings.Split(errBuf.String(), "\n")
+
+	// Iterate over each line and check for the condition
+	for _, line := range lines {
+		if strings.Contains(line, "printenv | ") {
+			result = strings.Split(line, "printenv | ")[1]
+			found = true
+			break
+		}
+	}
+	return result, found
 }
