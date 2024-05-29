@@ -26,7 +26,7 @@ func TestRunCommand(t *testing.T) {
 			t.Fatalf(msg, err)
 		}
 
-		assert.Regexp(t, "Error: failed to load env file from .+: open .+: no such file or directory\n", buff.String())
+		assert.Regexp(t, "Error: failed to load env file from .+/dispatch/cli/non-existent.env: open non-existent.env: no such file or directory\n", buff.String())
 	})
 
 	t.Run("Run with env file", func(t *testing.T) {
