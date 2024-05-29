@@ -144,6 +144,16 @@ func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, error) {
 	}
 
 	// Wait for the command to finish or for the context to timeout
+	// We use Wait() instead of Run() so that we can capture the error
+	// For example:
+	//    FOO=bar ./build/darwin/amd64/dispatch run -- printenv FOO
+	// This will exit with
+	//    Error: command 'printenv FOO' exited unexpectedly
+	// but also it will print...
+	//    printenv | bar
+	// to the logs and that is exactly what we want to test
+	// If context timeout occurs, than something went wrong
+	// and `dispatch run` is running indefinitely.
 	if err := cmd.Wait(); err != nil {
 		// Check if the error is due to context timeout (command running too long)
 		if ctx.Err() == context.DeadlineExceeded {
