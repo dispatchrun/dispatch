@@ -14,6 +14,9 @@ IMAGE = $(REGISTRY)/dispatch:$(TAG)
 test: dispatch
 	$(GO) test ./...
 
+test-cover: dispatch
+	$(GO) test -cover ./...
+
 lint:
 	golangci-lint run ./...
 

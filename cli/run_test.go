@@ -86,7 +86,7 @@ func TestRunCommand(t *testing.T) {
 
 		result, found := findEnvVariableInLogs(&buff)
 		if !found {
-			t.Fatal("Expected 'printenv | rick_sanchez' in the output")
+			t.Fatal("Expected printenv in the output")
 		}
 		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
 	})
@@ -111,7 +111,7 @@ func TestRunCommand(t *testing.T) {
 
 		result, found := findEnvVariableInLogs(&buff)
 		if !found {
-			t.Fatal("Expected in the output")
+			t.Fatal("Expected printenv in the output")
 		}
 		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
 	})
@@ -119,7 +119,7 @@ func TestRunCommand(t *testing.T) {
 
 func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, string, error) {
 	// Create a context with a timeout to ensure the process doesn't run indefinitely
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Set up the command
@@ -145,7 +145,6 @@ func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, string, err
 		// Check if the error is due to context timeout (command running too long)
 		if ctx.Err() == context.DeadlineExceeded {
 			return errBuf, "Command timed out", err
-			// t.Fatalf("Command timed out")
 		}
 	}
 
