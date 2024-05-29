@@ -198,10 +198,13 @@ func TestRunCommand(t *testing.T) {
 		if !found {
 			t.Fatal("Expected 'printenv | pickle' in the output")
 		}
-		assert.True(t, found, fmt.Sprintf("Expected 'printenv | not_pickle' in the output, got 'printenv | %s'", result))
+		assert.Equal(t, "not_pickle", result, fmt.Sprintf("Expected 'printenv | not_pickle' in the output, got 'printenv | %s'", result))
 	})
 	t.Run("Run with env variable in local env vars has priority over the one in the env file", func(t *testing.T) {
 		// Do not use t.Parallel() here as we are manipulating the environment!
+
+		// Set environment variables
+		os.Setenv("RICK_SANCHEZ", "not_pickle")
 
 		tempDir := t.TempDir()
 		envFile := filepath.Join(tempDir, "test.env")
@@ -209,9 +212,6 @@ func TestRunCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to write env file: %v", err)
 		}
-
-		// Set environment variables
-		os.Setenv("RICK_SANCHEZ", "not_pickle")
 
 		// Create a context with a timeout to ensure the process doesn't run indefinitely
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -253,6 +253,6 @@ func TestRunCommand(t *testing.T) {
 		if !found {
 			t.Fatal("Expected in the output")
 		}
-		assert.True(t, found, fmt.Sprintf("Expected 'printenv | not_pickle' in the output, got 'printenv | %s'", result))
+		assert.Equal(t, "not_pickle", result, fmt.Sprintf("Expected 'printenv | not_pickle' in the output, got 'printenv | %s'", result))
 	})
 }
