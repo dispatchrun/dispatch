@@ -11,7 +11,7 @@ REGISTRY ?= 714918108619.dkr.ecr.us-west-2.amazonaws.com
 DISPATCH = $(BUILD)/dispatch
 IMAGE = $(REGISTRY)/dispatch:$(TAG)
 
-test:
+test: dispatch
 	$(GO) test ./...
 
 lint:
