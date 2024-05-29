@@ -45,7 +45,7 @@ func TestRunCommand(t *testing.T) {
 
 		result, found := findEnvVariableInLogs(&buff)
 		if !found {
-			t.Fatal("Expected printenv in the output")
+			t.Fatalf("Expected printenv in the output: %s", buff.String())
 		}
 		assert.Equal(t, "rick_sanchez", result, fmt.Sprintf("Expected 'printenv | rick_sanchez' in the output, got 'printenv | %s'", result))
 	})
@@ -63,7 +63,7 @@ func TestRunCommand(t *testing.T) {
 
 		result, found := findEnvVariableInLogs(&buff)
 		if !found {
-			t.Fatal("Expected printenv in the output")
+			t.Fatalf("Expected printenv in the output: %s", buff.String())
 		}
 		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
 	})
@@ -86,7 +86,7 @@ func TestRunCommand(t *testing.T) {
 
 		result, found := findEnvVariableInLogs(&buff)
 		if !found {
-			t.Fatal("Expected printenv in the output")
+			t.Fatalf("Expected printenv in the output: %s", buff.String())
 		}
 		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
 	})
@@ -111,7 +111,7 @@ func TestRunCommand(t *testing.T) {
 
 		result, found := findEnvVariableInLogs(&buff)
 		if !found {
-			t.Fatal("Expected printenv in the output")
+			t.Fatalf("Expected printenv in the output: %s\n\n", buff.String())
 		}
 		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
 	})
@@ -121,6 +121,9 @@ func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, string, err
 	// Create a context with a timeout to ensure the process doesn't run indefinitely
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// add the api key to the arguments so the command can run without `dispatch login` being run first
+	arg = append(arg[:1], append([]string{"--api-key", "00000000"}, arg[1:]...)...)
 
 	// Set up the command
 	cmd := exec.CommandContext(ctx, dispatchBinary, arg...)
@@ -137,7 +140,6 @@ func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, string, err
 	// Start the command
 	if err := cmd.Start(); err != nil {
 		return errBuf, "Failed to start command: &v", err
-		// t.Fatalf("Failed to start command: %v", err)
 	}
 
 	// Wait for the command to finish or for the context to timeout
@@ -157,12 +159,12 @@ func createEnvFile(path string, content []byte) (string, error) {
 	return envFile, err
 }
 
-func findEnvVariableInLogs(errBuf *bytes.Buffer) (string, bool) {
+func findEnvVariableInLogs(buf *bytes.Buffer) (string, bool) {
 	var result string
 	found := false
 
 	// Split the log into lines
-	lines := strings.Split(errBuf.String(), "\n")
+	lines := strings.Split(buf.String(), "\n")
 
 	// Iterate over each line and check for the condition
 	for _, line := range lines {
