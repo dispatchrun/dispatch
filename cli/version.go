@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"runtime/debug"
 
 	"github.com/spf13/cobra"
@@ -13,7 +12,7 @@ func versionCommand() *cobra.Command {
 		Short: "Print the version",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Match dispatch -v,--version output:
-			fmt.Println("dispatch version " + version())
+			cmd.Println("dispatch version " + version())
 			return nil
 		},
 	}
