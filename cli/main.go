@@ -10,15 +10,14 @@ var (
 	DispatchCmdLong = `Welcome to Dispatch!
 
 To get started, use the login command to authenticate with Dispatch or create an account.
-	
+
 Documentation: https://docs.dispatch.run
 Discord: https://dispatch.run/discord
 Support: support@dispatch.run
 `
 )
 
-// Main is the entry point of the command line.
-func Main() error {
+func createMainCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Version: version(),
 		Use:     "dispatch",
@@ -50,5 +49,10 @@ func Main() error {
 	cmd.AddCommand(runCommand())
 	cmd.AddCommand(versionCommand())
 
-	return cmd.ExecuteContext(context.Background())
+	return cmd
+}
+
+// Main is the entry point of the command line.
+func Main() error {
+	return createMainCommand().ExecuteContext(context.Background())
 }
