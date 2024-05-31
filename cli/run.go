@@ -80,9 +80,8 @@ a pristine environment in which function calls can be dispatched and
 handled by the local application. To start the command using a previous
 session, use the --session option to specify a session ID from a
 previous run.`, defaultEndpoint),
-		Args:         cobra.MinimumNArgs(1),
-		SilenceUsage: true,
-		GroupID:      "dispatch",
+		Args:    cobra.MinimumNArgs(1),
+		GroupID: "dispatch",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return runConfigFlow()
 		},

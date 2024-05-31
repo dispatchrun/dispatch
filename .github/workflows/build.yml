@@ -54,4 +54,4 @@ jobs:
           go-version: ${{ env.GOVERSION }}
       - run: git config --global url.https://${{ secrets.PRIVATE_REPO }}@github.com.insteadOf https://github.com
       - run: go mod download
-      - run: go test -cover ./...
+      - run: make test-cover
