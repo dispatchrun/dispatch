@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -116,6 +118,7 @@ func TestSwitchCommand(t *testing.T) {
 }
 
 func setupConfig(t *testing.T, tc testCase) string {
+	lipgloss.SetColorProfile(termenv.Ascii)
 	tempDir := t.TempDir() // unique temp dir for each test and cleaned up after test finishes
 	configPath := filepath.Join(tempDir, "config.yaml")
 	if tc.configExists {
