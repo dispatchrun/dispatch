@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GOPRIVATE: github.com/stealthrocket,buf.build/gen/go
+  GOPRIVATE: github.com/dispatchrun,buf.build/gen/go
   GOVERSION: 1.22.0
 
 jobs:
@@ -39,7 +39,10 @@ jobs:
           skip-pkg-cache: true
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     permissions:
       id-token: write
       contents: read
