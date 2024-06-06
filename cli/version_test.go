@@ -2,7 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,7 +24,7 @@ func TestVersionCommand(t *testing.T) {
 			t.Fatalf("Received unexpected error: %v", err)
 		}
 
-		assert.Equal(t, versionText+"\n", stdout.String())
+		assert.Equal(t, versionText+" \n", stdout.String())
 	})
 
 	t.Run("Print the version (binary)", func(t *testing.T) {
@@ -41,12 +43,21 @@ func TestVersionCommand(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		cmdGitHash.Stdout = stdout
 
+		// get git version tag
+		cmdGitVersion := exec.Command("git", "describe", "--tags", "--abbrev=0")
+		stdoutVersion := &bytes.Buffer{}
+		cmdGitVersion.Stdout = stdoutVersion
+
+		if err := cmdGitVersion.Run(); err != nil {
+			t.Fatalf("Received unexpected error: %v", err)
+		}
+
 		if err := cmdGitHash.Run(); err != nil {
 			t.Fatalf("Received unexpected error: %v", err)
 		}
 
-		version := stdout.String()
-
-		assert.Equal(t, versionText+" "+version, stderr.String())
+		revision := stdout.String()[:8]                             // get the first 8 characters of the git commit hash
+		tagVersion := strings.TrimSpace(stdoutVersion.String())[1:] // remove the 'v' prefix
+		assert.Equal(t, fmt.Sprintf("%s %s, build %s\n", versionText, tagVersion, revision), stderr.String())
 	})
 }
