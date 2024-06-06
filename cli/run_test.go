@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -26,7 +27,12 @@ func TestRunCommand(t *testing.T) {
 			t.Fatal(err.Error())
 		}
 
-		assert.Regexp(t, "Error: failed to load env file from .+/dispatch/cli/non-existent.env: open non-existent.env: no such file or directory\n", buff.String())
+		errMsg := "no such file or directory\n"
+		path := regexp.QuoteMeta(filepath.FromSlash("/dispatch/cli/non-existent.env"))
+		if runtime.GOOS == "windows" {
+			errMsg = "The system cannot find the file specified.\n"
+		}
+		assert.Regexp(t, "Error: failed to load env file from .+"+path+": open non-existent\\.env: "+errMsg, buff.String())
 	})
 
 	t.Run("Run with env file", func(t *testing.T) {
