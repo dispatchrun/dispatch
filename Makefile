@@ -3,12 +3,13 @@
 BUILD = build/$(GOOS)/$(GOARCH)
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
+GOEXE ?= $(shell go env GOEXE)
 GO ?= go
 
 DOCKER ?= docker
 TAG ?= $(shell git log --pretty=format:'%h' -n 1)
 REGISTRY ?= 714918108619.dkr.ecr.us-west-2.amazonaws.com
-DISPATCH = $(BUILD)/dispatch
+DISPATCH = $(BUILD)/dispatch$(GOEXE)
 IMAGE = $(REGISTRY)/dispatch:$(TAG)
 
 test: dispatch
