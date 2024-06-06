@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var versionText = "dispatch version devel"
+var versionText = "dispatch version"
 
 func TestVersionCommand(t *testing.T) {
 	t.Run("Print the version (test runtime)", func(t *testing.T) {
@@ -24,7 +24,7 @@ func TestVersionCommand(t *testing.T) {
 			t.Fatalf("Received unexpected error: %v", err)
 		}
 
-		assert.Equal(t, versionText+" \n", stdout.String())
+		assert.Equal(t, versionText+" , build \n", stdout.String())
 	})
 
 	t.Run("Print the version (binary)", func(t *testing.T) {

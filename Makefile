@@ -25,8 +25,10 @@ fmt:
 	$(GO) fmt ./...
 
 dispatch:
-	$(GO) build -o $(DISPATCH) .
-
+	@echo "Building dispatch binary..."
+	$(eval VERSION := $(shell git describe --tags --abbrev=0 | cut -c 2-))
+	$(eval COMMIT := $(shell git rev-parse --short=8 HEAD))
+	$(GO) build -ldflags "-X main.Version=$(VERSION) -X main.Revision=$(COMMIT)" -o $(DISPATCH) .
 clean:
 	rm -rf ./build
 

@@ -1,12 +1,11 @@
 package cli
 
 import (
-	"runtime/debug"
-	"strings"
-
 	"github.com/spf13/cobra"
-	"os/exec"
 )
+
+var Version string
+var Revision string
 
 func versionCommand() *cobra.Command {
 	return &cobra.Command{
@@ -21,21 +20,10 @@ func versionCommand() *cobra.Command {
 }
 
 func version() string {
-	version := "devel "
-	output, _ := exec.Command("git", "describe", "--tags", "--abbrev=0").Output()
-	if info, ok := debug.ReadBuildInfo(); ok {
-		switch info.Main.Version {
-		case "":
-		case "(devel)":
-			version += strings.TrimSpace(string(output)[1:]) + ", build"
-		default:
-			version = info.Main.Version
-		}
-		for _, setting := range info.Settings {
-			if setting.Key == "vcs.revision" {
-				version += " " + setting.Value[:8]
-			}
-		}
-	}
-	return version
+	return Version + ", build " + Revision
+}
+
+func InitVersions(version string, revision string) {
+	Version = version
+	Revision = revision
 }
