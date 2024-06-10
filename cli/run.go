@@ -198,12 +198,16 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					select {
 					case <-ctx.Done():
 						return
-					case <-signals:
+					case s := <-signals:
 						if !signaled {
 							signaled = true
-							_ = cmd.Process.Signal(syscall.SIGTERM)
 						} else {
-							_ = cmd.Process.Kill()
+							s = os.Kill
+						}
+						if cmd.Process != nil && cmd.Process.Pid > 0 {
+							// Sending the signal to -pid sends it to all processes
+							// in the process group.
+							_ = syscall.Kill(-cmd.Process.Pid, s.(syscall.Signal))
 						}
 					}
 				}
