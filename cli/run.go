@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -281,6 +282,9 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 					}()
 				}
 			})
+
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
 
 			if err = cmd.Start(); err != nil {
 				return fmt.Errorf("failed to start %s: %v", strings.Join(args, " "), err)
