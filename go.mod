@@ -3,7 +3,7 @@ module github.com/dispatchrun/dispatch
 go 1.22.0
 
 require (
-	buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.34.2-20240429010127-639d52c5db75.2
+	buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.34.2-20240612225639-f8a6c0a10402.2
 	github.com/charmbracelet/bubbles v0.18.0
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.9.1

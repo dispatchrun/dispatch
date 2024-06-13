@@ -1,7 +1,7 @@
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.34.2-20231115204500-e097f827e652.2 h1:ilkjxsfdhrdeLL582R4XH+IQLrV2Y31lHB8jb3AQSJA=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.34.2-20231115204500-e097f827e652.2/go.mod h1:ylS4c28ACSI59oJrOdW4pHS4n0Hw4TgSPHn8rpHl4Yw=
-buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.34.2-20240429010127-639d52c5db75.2 h1:1r8eO7RcxrZXs1FZLLQb/S/1SOBXfGsHQoDSPwFuu10=
-buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.34.2-20240429010127-639d52c5db75.2/go.mod h1:Z1Y+G5dzXnHxfdt7l3S9kLBWV6iO2Zw3z2DvY9yKpaw=
+buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.34.2-20240612225639-f8a6c0a10402.2 h1:GfZ4I61ZZiXk6zXLZaMNz1rSW0MxlBRRc5n5GOUbIg4=
+buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go v1.34.2-20240612225639-f8a6c0a10402.2/go.mod h1:Z1Y+G5dzXnHxfdt7l3S9kLBWV6iO2Zw3z2DvY9yKpaw=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
