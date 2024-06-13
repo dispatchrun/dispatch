@@ -552,7 +552,20 @@ func (t *TUI) detailView(id DispatchID) string {
 			add("Input", rt.request.input)
 
 		case *sdkv1.RunRequest_PollResult:
-			add("Input", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.PollResult.CoroutineState))))
+			switch s := d.PollResult.State.(type) {
+			case *sdkv1.PollResult_CoroutineState:
+				add("Input", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of opaque state>", len(s.CoroutineState))))
+			case *sdkv1.PollResult_TypedCoroutineState:
+				if any := s.TypedCoroutineState; any != nil {
+					add("Input", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of %s state>", len(any.Value), typeName(any.TypeUrl))))
+				} else {
+					add("Input", detailLowPriorityStyle.Render("<no state>"))
+				}
+			case nil:
+				add("Input", detailLowPriorityStyle.Render("<no state>"))
+			default:
+				add("Input", detailLowPriorityStyle.Render("<unknown state>"))
+			}
 			// TODO: show call results
 			// TODO: show poll error
 		}
@@ -593,7 +606,21 @@ func (t *TUI) detailView(id DispatchID) string {
 
 				case *sdkv1.RunResponse_Poll:
 					add("Status", suspendedStyle.Render("Suspended"))
-					add("Output", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of state>", len(d.Poll.CoroutineState))))
+
+					switch s := d.Poll.State.(type) {
+					case *sdkv1.Poll_CoroutineState:
+						add("Output", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of opaque state>", len(s.CoroutineState))))
+					case *sdkv1.Poll_TypedCoroutineState:
+						if any := s.TypedCoroutineState; any != nil {
+							add("Output", detailLowPriorityStyle.Render(fmt.Sprintf("<%d bytes of %s state>", len(any.Value), typeName(any.TypeUrl))))
+						} else {
+							add("Output", detailLowPriorityStyle.Render("<no state>"))
+						}
+					case nil:
+						add("Output", detailLowPriorityStyle.Render("<no state>"))
+					default:
+						add("Output", detailLowPriorityStyle.Render("<unknown state>"))
+					}
 
 					if len(d.Poll.Calls) > 0 {
 						var calls strings.Builder
@@ -1032,4 +1059,12 @@ func terminalHTTPStatusCode(code int) bool {
 	default:
 		return true
 	}
+}
+
+func typeName(typeUrl string) string {
+	i := strings.LastIndexByte(typeUrl, '/')
+	if i < 0 {
+		return typeUrl
+	}
+	return typeUrl[i+1:]
 }

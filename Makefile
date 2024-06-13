@@ -37,6 +37,5 @@ push: image
 	$(DOCKER) push $(IMAGE)
 
 update:
-	buf mod update ./proto
 	for ref in $$(yq -r '.deps[] | .remote + "/gen/go/" + .owner + "/" + .repository + "/protocolbuffers/go@" + .commit' proto/buf.lock); do go get $$ref; done
 	go mod tidy
