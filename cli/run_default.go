@@ -2,6 +2,13 @@
 
 package cli
 
-import "syscall"
+import (
+	"os"
+	"syscall"
+)
 
 func setSysProcAttr(attr *syscall.SysProcAttr) {}
+
+func killProcess(process *os.Process, _ os.Signal) {
+	process.Kill()
+}

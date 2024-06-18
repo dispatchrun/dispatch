@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -26,96 +27,106 @@ func TestRunCommand(t *testing.T) {
 			t.Fatal(err.Error())
 		}
 
-		assert.Regexp(t, "Error: failed to load env file from .+/dispatch/cli/non-existent.env: open non-existent.env: no such file or directory\n", buff.String())
+		errMsg := "no such file or directory\n"
+		path := regexp.QuoteMeta(filepath.FromSlash("/dispatch/cli/non-existent.env"))
+		if runtime.GOOS == "windows" {
+			errMsg = "The system cannot find the file specified.\n"
+		}
+		assert.Regexp(t, "Error: failed to load env file from .+"+path+": open non-existent\\.env: "+errMsg, buff.String())
 	})
 
-	t.Run("Run with env file", func(t *testing.T) {
-		t.Parallel()
+	if runtime.GOOS != "windows" {
+		t.Run("Run with env file", func(t *testing.T) {
+			t.Parallel()
 
-		envFile, err := createEnvFile(t.TempDir(), []byte("CHARACTER=rick_sanchez"))
-		defer os.Remove(envFile)
-		if err != nil {
-			t.Fatalf("Failed to write env file: %v", err)
-		}
+			envFile, err := createEnvFile(t.TempDir(), []byte("CHARACTER=rick_sanchez"))
+			defer os.Remove(envFile)
+			if err != nil {
+				t.Fatalf("Failed to write env file: %v", err)
+			}
 
-		buff, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+			buff, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
+			if err != nil {
+				t.Fatal(err.Error())
+			}
 
-		result, found := findEnvVariableInLogs(&buff)
-		if !found {
-			t.Fatalf("Expected printenv in the output: %s", buff.String())
-		}
-		assert.Equal(t, "rick_sanchez", result, fmt.Sprintf("Expected 'printenv | rick_sanchez' in the output, got 'printenv | %s'", result))
-	})
+			result, found := findEnvVariableInLogs(&buff)
+			if !found {
+				t.Fatalf("Expected printenv in the output: %s", buff.String())
+			}
+			assert.Equal(t, "rick_sanchez", result, fmt.Sprintf("Expected 'printenv | rick_sanchez' in the output, got 'printenv | %s'", result))
+		})
+	}
 
-	t.Run("Run with env variable", func(t *testing.T) {
-		t.Parallel()
+	// FIXME(@chicoxyzzy): Fix tests to work on Windows
+	if runtime.GOOS != "windows" {
+		t.Run("Run with env variable", func(t *testing.T) {
+			t.Parallel()
 
-		// Set environment variables
-		envVars := []string{"CHARACTER=morty_smith"}
+			// Set environment variables
+			envVars := []string{"CHARACTER=morty_smith"}
 
-		buff, err := execRunCommand(&envVars, "run", "--", "printenv", "CHARACTER")
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+			buff, err := execRunCommand(&envVars, "run", "--", "printenv", "CHARACTER")
+			if err != nil {
+				t.Fatal(err.Error())
+			}
 
-		result, found := findEnvVariableInLogs(&buff)
-		if !found {
-			t.Fatalf("Expected printenv in the output: %s", buff.String())
-		}
-		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
-	})
+			result, found := findEnvVariableInLogs(&buff)
+			if !found {
+				t.Fatalf("Expected printenv in the output: %s", buff.String())
+			}
+			assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
+		})
 
-	t.Run("Run with env variable in command line has priority over the one in the env file", func(t *testing.T) {
-		t.Parallel()
+		t.Run("Run with env variable in command line has priority over the one in the env file", func(t *testing.T) {
+			t.Parallel()
 
-		envFile, err := createEnvFile(t.TempDir(), []byte("CHARACTER=rick_sanchez"))
-		defer os.Remove(envFile)
-		if err != nil {
-			t.Fatalf("Failed to write env file: %v", err)
-		}
+			envFile, err := createEnvFile(t.TempDir(), []byte("CHARACTER=rick_sanchez"))
+			defer os.Remove(envFile)
+			if err != nil {
+				t.Fatalf("Failed to write env file: %v", err)
+			}
 
-		// Set environment variables
-		envVars := []string{"CHARACTER=morty_smith"}
-		buff, err := execRunCommand(&envVars, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+			// Set environment variables
+			envVars := []string{"CHARACTER=morty_smith"}
+			buff, err := execRunCommand(&envVars, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
+			if err != nil {
+				t.Fatal(err.Error())
+			}
 
-		result, found := findEnvVariableInLogs(&buff)
-		if !found {
-			t.Fatalf("Expected printenv in the output: %s", buff.String())
-		}
-		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
-	})
+			result, found := findEnvVariableInLogs(&buff)
+			if !found {
+				t.Fatalf("Expected printenv in the output: %s", buff.String())
+			}
+			assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
+		})
 
-	t.Run("Run with env variable in local env vars has priority over the one in the env file", func(t *testing.T) {
-		// Do not use t.Parallel() here as we are manipulating the environment!
+		t.Run("Run with env variable in local env vars has priority over the one in the env file", func(t *testing.T) {
+			// Do not use t.Parallel() here as we are manipulating the environment!
 
-		// Set environment variables
-		os.Setenv("CHARACTER", "morty_smith")
-		defer os.Unsetenv("CHARACTER")
+			// Set environment variables
+			os.Setenv("CHARACTER", "morty_smith")
+			defer os.Unsetenv("CHARACTER")
 
-		envFile, err := createEnvFile(t.TempDir(), []byte("CHARACTER=rick_sanchez"))
-		defer os.Remove(envFile)
+			envFile, err := createEnvFile(t.TempDir(), []byte("CHARACTER=rick_sanchez"))
+			defer os.Remove(envFile)
 
-		if err != nil {
-			t.Fatalf("Failed to write env file: %v", err)
-		}
+			if err != nil {
+				t.Fatalf("Failed to write env file: %v", err)
+			}
 
-		buff, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+			buff, err := execRunCommand(&[]string{}, "run", "--env-file", envFile, "--", "printenv", "CHARACTER")
+			if err != nil {
+				t.Fatal(err.Error())
+			}
 
-		result, found := findEnvVariableInLogs(&buff)
-		if !found {
-			t.Fatalf("Expected printenv in the output: %s\n\n", buff.String())
-		}
-		assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
-	})
+			result, found := findEnvVariableInLogs(&buff)
+			if !found {
+				t.Fatalf("Expected printenv in the output: %s\n\n", buff.String())
+			}
+			assert.Equal(t, "morty_smith", result, fmt.Sprintf("Expected 'printenv | morty_smith' in the output, got 'printenv | %s'", result))
+		})
+	}
 }
 
 func execRunCommand(envVars *[]string, arg ...string) (bytes.Buffer, error) {
