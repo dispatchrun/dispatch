@@ -17,6 +17,9 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    concurrency:
+      group: tests-${{ github.workflow }}-${{ github.event.number || github.ref }}
+      cancel-in-progress: true
     permissions:
       id-token: write
       contents: read

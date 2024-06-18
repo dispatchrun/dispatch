@@ -205,9 +205,7 @@ Run 'dispatch help run' to learn about Dispatch sessions.`, BridgeSession)
 							s = os.Kill
 						}
 						if cmd.Process != nil && cmd.Process.Pid > 0 {
-							// Sending the signal to -pid sends it to all processes
-							// in the process group.
-							_ = syscall.Kill(-cmd.Process.Pid, s.(syscall.Signal))
+							killProcess(cmd.Process, s.(syscall.Signal))
 						}
 					}
 				}
