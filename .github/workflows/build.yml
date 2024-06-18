@@ -17,9 +17,6 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    concurrency:
-      group: tests-${{ github.workflow }}-${{ github.event.number || github.ref }}
-      cancel-in-progress: true
     permissions:
       id-token: write
       contents: read
@@ -43,6 +40,9 @@ jobs:
 
   test:
     runs-on: ${{ matrix.os }}
+    concurrency:
+      group: ${{ matrix.os }}-${{ github.workflow }}-${{ github.event.number || github.ref }}
+      cancel-in-progress: true
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
