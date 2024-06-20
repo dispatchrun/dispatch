@@ -5,6 +5,9 @@ before:
   hooks:
     - go mod tidy
 
+gomod:
+  proxy: true
+
 builds:
   - main: .
     binary: dispatch

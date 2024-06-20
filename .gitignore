@@ -24,6 +24,9 @@ vendor/
 go.work
 go.work.sum
 
+# goreleaser
+goreleaser/
+
 # Emacs
 *~
 
