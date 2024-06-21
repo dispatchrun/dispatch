@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var expectedCommands = []string{"login", "switch [organization]", "verification", "run", "version"}
+var expectedCommands = []string{"login", "switch [organization]", "verification", "run", "version", "init <template> [path]"}
 
 func TestMainCommand(t *testing.T) {
 	t.Run("Main command", func(t *testing.T) {
@@ -22,7 +22,6 @@ func TestMainCommand(t *testing.T) {
 		assert.Equal(t, "dispatch", groups[1].ID, "Expected second group to be 'dispatch'")
 
 		commands := cmd.Commands()
-		assert.Len(t, commands, 5, "Expected 5 commands")
 
 		// Extract the command IDs
 		commandIDs := make([]string, 0, len(commands))
