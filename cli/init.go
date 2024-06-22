@@ -16,11 +16,9 @@ import (
 )
 
 const (
-	githubTarballURL = "https://github.com/%s/%s/tarball/%s"
-	githubAPIURL     = "https://api.github.com/repos/%s/%s/branches/%s"
-	owner            = "dispatchrun"
+	githubTarballURL = "https://github.com/dispatchrun/%s/tarball/main"
+	githubAPIURL     = "https://api.github.com/repos/dispatchrun/%s/branches/main"
 	repo             = "dispatch-examples"
-	branch           = "main"
 	dispatchUserDir  = "dispatch"
 )
 
@@ -62,7 +60,7 @@ func isDirectoryEmpty(path string) (bool, error) {
 }
 
 func downloadAndExtractTemplates(destDir string) error {
-	url := fmt.Sprintf(githubTarballURL, owner, repo, branch)
+	url := fmt.Sprintf(githubTarballURL, repo)
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -168,8 +166,8 @@ func getAppDataDir(appName string) (string, error) {
 	return appDataDir, nil
 }
 
-func getLatestCommitSHA(owner, repo, branch string) (string, error) {
-	url := fmt.Sprintf(githubAPIURL, owner, repo, branch)
+func getLatestCommitSHA(repo string) (string, error) {
+	url := fmt.Sprintf(githubAPIURL, repo)
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
@@ -312,7 +310,7 @@ func initCommand() *cobra.Command {
 				}
 			}
 
-			remoteSHA, err := getLatestCommitSHA(owner, repo, branch)
+			remoteSHA, err := getLatestCommitSHA(repo)
 			if err != nil {
 				cmd.Printf("failed to get latest commit SHA: %v", err)
 			}
