@@ -16,25 +16,20 @@ import (
 )
 
 const (
-	githubTarballURL = "https://github.com/dispatchrun/%s/tarball/main"
-	githubAPIURL     = "https://api.github.com/repos/dispatchrun/%s/branches/main"
-	repo             = "dispatch-examples"
+	githubTarballURL = "https://github.com/%s/tarball/main"
+	githubAPIURL     = "https://api.github.com/repos/%s/branches/main"
+	repo             = "dispatchrun/dispatch-examples"
 	dispatchUserDir  = "dispatch"
 )
-
-// TODO: versioning for different SDKs?
 
 func directoryExists(path string) (bool, error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		// The directory does not exist
 		return false, nil
 	}
 	if err != nil {
-		// Some other error occurred
 		return false, err
 	}
-	// Check if the path is a directory
 	return info.IsDir(), nil
 }
 
@@ -96,6 +91,8 @@ func extractTarball(r io.Reader, destDir string) error {
 			continue
 		}
 
+		// We need to strip the top-level directory from the file paths
+		// It contains the repository name and the commit SHA which we don't need
 		// Get the top-level directory name
 		if topLevelDir == "" {
 			parts := strings.Split(header.Name, "/")
@@ -286,18 +283,15 @@ func initCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init <template> [path]",
 		Short: "Initialize a new Dispatch project",
-		Long:  "Initialize a new Dispatch project",
-		Args:  cobra.MinimumNArgs(1),
+		// Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var directory string
-			var exists = true
-
+			// get or create the Dispatch templates directory
 			dispatchUserDirPath, err := getAppDataDir(dispatchUserDir)
 			if err != nil {
-				cmd.SilenceUsage = true
-				return fmt.Errorf("failed to get Dispatch templates directory: %w", err)
+				fmt.Printf("failed to get Dispatch templates directory: %s", err)
 			}
 
+			// well-known paths for Dispatch templates
 			dispatchTemplatesDirPath := filepath.Join(dispatchUserDirPath, "templates")
 			dispatchTemplatesHashPath := filepath.Join(dispatchUserDirPath, "templates.sha")
 
@@ -306,15 +300,17 @@ func initCommand() *cobra.Command {
 			if err != nil {
 				if !os.IsNotExist(err) {
 					cmd.SilenceUsage = true
-					return fmt.Errorf("failed to read templates SHA: %w", err)
+					cmd.PrintErrf("failed to read templates SHA: %s", err)
 				}
 			}
 
+			// get the latest commit SHA from the templates repository
 			remoteSHA, err := getLatestCommitSHA(repo)
 			if err != nil {
 				cmd.Printf("failed to get latest commit SHA: %v", err)
 			}
 
+			// update the templates if the latest commit SHA is different
 			if remoteSHA != "" && string(sha) != remoteSHA {
 				cmd.Println("Templates update available. Do you want to download the latest templates? [y/N]")
 
@@ -327,7 +323,7 @@ func initCommand() *cobra.Command {
 					if err != nil {
 						cmd.Printf("failed to download and extract templates: %v", err)
 					} else {
-						cmd.Print("Templates have been updated\n")
+						cmd.Print("Templates have been updated\n\n")
 						// TODO: possible improvement:
 						// find which templates have been added/removed/modified
 						// and/or
@@ -342,18 +338,42 @@ func initCommand() *cobra.Command {
 				}
 			}
 
+			// read the available templates
 			templates, err := readDirectories(dispatchTemplatesDirPath)
+
 			if err != nil {
 				cmd.SilenceUsage = true
 				if os.IsNotExist(err) {
-					return fmt.Errorf("templates directory does not exist in %s. Please run `dispatch init` to download the templates", dispatchTemplatesDirPath)
+					cmd.PrintErrf("templates directory does not exist in %s. Please run `dispatch init` to download the templates", dispatchTemplatesDirPath)
 				}
-				return fmt.Errorf("failed to read templates directory. : %w", err)
+				cmd.PrintErrf("failed to read templates directory. : %s", err)
 			}
+
+			if len(templates) == 0 {
+				cmd.SilenceUsage = true
+				return fmt.Errorf("templates directory %s is corrupted. Please clean it and try again", dispatchTemplatesDirPath)
+			}
+
+			var templatesList string = ""
+
+			for _, template := range templates {
+				templatesList += "  " + template + "\n"
+			}
+			cmd.SetUsageTemplate(cmd.UsageTemplate() + "\nAvailable templates:\n" + templatesList)
+
+			// if no arguments are provided (user wants to download/update templates only), print the usage
+			if len(args) == 0 {
+				cmd.Print(cmd.UsageString())
+				return nil
+			}
+
+			var directory string
+			var exists = true
 
 			wantedTemplate := args[0]
 			isTemplateFound := false
 
+			// find template in the available templates
 			for _, template := range templates {
 				if template == wantedTemplate {
 					isTemplateFound = true
@@ -363,14 +383,11 @@ func initCommand() *cobra.Command {
 
 			if !isTemplateFound {
 				cmd.SilenceUsage = true
-				cmd.Printf("Template %v is not supported.\nAvailable templates:\n", wantedTemplate)
-				for _, template := range templates {
-					cmd.Println("  " + template)
-				}
-				cmd.Println()
+				cmd.Printf("Template %s is not supported.\n\nAvailable templates:\n %s", wantedTemplate, templatesList)
 				return nil
 			}
 
+			// check if a directory is provided
 			if len(args) > 1 {
 				directory = args[1]
 				flag, err := directoryExists(directory)
@@ -394,6 +411,7 @@ func initCommand() *cobra.Command {
 				directory = "."
 			}
 
+			// check if the if directory exists and is empty
 			if exists {
 				isEmpty, err := isDirectoryEmpty(directory)
 				if err != nil {
@@ -435,5 +453,6 @@ func initCommand() *cobra.Command {
 			return nil
 		},
 	}
+
 	return cmd
 }
