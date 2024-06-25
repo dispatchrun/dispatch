@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	pythonv1 "buf.build/gen/go/stealthrocket/dispatch-proto/protocolbuffers/go/dispatch/sdk/python/v1"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -67,6 +69,15 @@ func anyString(any *anypb.Any) string {
 	case *durationpb.Duration:
 		return mm.AsDuration().String()
 
+	case *structpb.Struct:
+		return structpbStructString(mm)
+
+	case *structpb.ListValue:
+		return structpbListString(mm)
+
+	case *structpb.Value:
+		return structpbValueString(mm)
+
 	case *pythonv1.Pickled:
 		s, err := pythonPickleString(mm.PickledValue)
 		if err != nil {
@@ -76,6 +87,55 @@ func anyString(any *anypb.Any) string {
 
 	default:
 		return unsupportedAny(any, fmt.Errorf("not implemented: %T", m))
+	}
+}
+
+func structpbStructString(s *structpb.Struct) string {
+	var b strings.Builder
+	b.WriteByte('{')
+	i := 0
+	for name, value := range s.Fields {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(fmt.Sprintf("%q", name))
+		b.WriteString(": ")
+		b.WriteString(structpbValueString(value))
+		i++
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+func structpbListString(s *structpb.ListValue) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, value := range s.Values {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(structpbValueString(value))
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+func structpbValueString(s *structpb.Value) string {
+	switch v := s.Kind.(type) {
+	case *structpb.Value_StructValue:
+		return structpbStructString(v.StructValue)
+	case *structpb.Value_ListValue:
+		return structpbListString(v.ListValue)
+	case *structpb.Value_BoolValue:
+		return strconv.FormatBool(v.BoolValue)
+	case *structpb.Value_NumberValue:
+		return fmt.Sprintf("%v", v.NumberValue)
+	case *structpb.Value_StringValue:
+		return fmt.Sprintf("%q", v.StringValue)
+	case *structpb.Value_NullValue:
+		return "null"
+	default:
+		panic("unreachable")
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -91,6 +92,34 @@ func TestAnyString(t *testing.T) {
 			input: asAny(&emptypb.Empty{}),
 			want:  "empty()",
 		},
+		{
+			input: asAny(structpb.NewNullValue()),
+			want:  "null",
+		},
+		{
+			input: asAny(structpb.NewBoolValue(false)),
+			want:  "false",
+		},
+		{
+			input: asAny(structpb.NewNumberValue(1111)),
+			want:  "1111",
+		},
+		{
+			input: asAny(structpb.NewNumberValue(3.14)),
+			want:  "3.14",
+		},
+		{
+			input: asAny(structpb.NewStringValue("foobar")),
+			want:  `"foobar"`,
+		},
+		{
+			input: asStructValue([]any{1, true, "abc", nil, map[string]any{}, []any{}}),
+			want:  `[1, true, "abc", null, {}, []]`,
+		},
+		{
+			input: asStructValue(map[string]any{"foo": []any{"bar", "baz"}}),
+			want:  `{"foo": ["bar", "baz"]}`,
+		},
 	} {
 		t.Run(test.want, func(*testing.T) {
 			got := anyString(test.input)
@@ -107,6 +136,14 @@ func asAny(m proto.Message) *anypb.Any {
 		panic(err)
 	}
 	return any
+}
+
+func asStructValue(v any) *anypb.Any {
+	m, err := structpb.NewValue(v)
+	if err != nil {
+		panic(err)
+	}
+	return asAny(m)
 }
 
 func pickled(b []byte) *anypb.Any {
