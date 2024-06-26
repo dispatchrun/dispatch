@@ -33,8 +33,6 @@ func TestInitCommand(t *testing.T) {
 
 		result, _ := directoryExists(tempFile)
 		assert.False(t, result)
-
-		os.Remove(tempFile)
 	})
 
 	t.Run("isDirectoryEmpty returns true for empty directory", func(t *testing.T) {
@@ -57,7 +55,35 @@ func TestInitCommand(t *testing.T) {
 
 		result, _ := isDirectoryEmpty(tempDir)
 		assert.False(t, result)
-
-		os.Remove(tempFile)
 	})
+
+	t.Run("downloadAndExtractTemplates downloads and extracts templates", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+
+		err := downloadAndExtractTemplates(tempDir)
+		assert.Nil(t, err)
+
+		// Check if the templates directory was created
+		result, _ := isDirectoryEmpty(tempDir)
+		assert.False(t, result)
+	})
+
+	t.Run("getLatestCommitSHA returns the latest commit SHA", func(t *testing.T) {
+		t.Parallel()
+
+		sha, err := getLatestCommitSHA("https://api.github.com/repos/dispatchrun/dispatch/branches/main")
+		assert.Nil(t, err)
+		assert.Regexp(t, "^[a-f0-9]{40}$", sha)
+	})
+
+	t.Run("getLatestCommitSHA returns an error for invalid URL", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := getLatestCommitSHA("invalidurl")
+		assert.NotNil(t, err)
+	})
+
+	// t.Run("")
 }

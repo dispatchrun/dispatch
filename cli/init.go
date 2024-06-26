@@ -163,8 +163,7 @@ func getAppDataDir(appName string) (string, error) {
 	return appDataDir, nil
 }
 
-func getLatestCommitSHA(repo string) (string, error) {
-	url := fmt.Sprintf(githubAPIURL, repo)
+func getLatestCommitSHA(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
@@ -305,7 +304,8 @@ func initCommand() *cobra.Command {
 			}
 
 			// get the latest commit SHA from the templates repository
-			remoteSHA, err := getLatestCommitSHA(repo)
+			url := fmt.Sprintf(githubAPIURL, repo)
+			remoteSHA, err := getLatestCommitSHA(url)
 			if err != nil {
 				cmd.Printf("failed to get latest commit SHA: %v", err)
 			}
