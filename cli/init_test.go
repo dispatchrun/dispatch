@@ -85,5 +85,79 @@ func TestInitCommand(t *testing.T) {
 		assert.NotNil(t, err)
 	})
 
-	// t.Run("")
+	t.Run("copyFile copies file", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+
+		src := tempDir + "/srcfile"
+		dest := tempDir + "/destfile"
+
+		_, err := os.Create(src)
+		assert.Nil(t, err)
+
+		err = copyFile(src, dest)
+		assert.Nil(t, err)
+
+		_, err = os.Stat(dest)
+		assert.Nil(t, err)
+	})
+
+	t.Run("copyDir copies directory", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+
+		src := tempDir + "/srcdir"
+		dest := tempDir + "/destdir"
+
+		err := os.Mkdir(src, 0755)
+		assert.Nil(t, err)
+
+		err = copyDir(src, dest)
+		assert.Nil(t, err)
+
+		_, err = os.Stat(dest)
+		assert.Nil(t, err)
+	})
+
+	t.Run("cleanDirectory removes all files and directories", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+
+		file := tempDir + "/file"
+		_, err := os.Create(file)
+		assert.Nil(t, err)
+
+		dir := tempDir + "/dir"
+		err = os.Mkdir(dir, 0755)
+		assert.Nil(t, err)
+
+		err = cleanDirectory(tempDir)
+		assert.Nil(t, err)
+
+		_, err = os.Stat(file)
+		assert.NotNil(t, err)
+		_, err = os.Stat(dir)
+		assert.NotNil(t, err)
+	})
+
+	t.Run("readDirectories returns all subdirectories", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+
+		dir1 := tempDir + "/dir1"
+		err := os.Mkdir(dir1, 0755)
+		assert.Nil(t, err)
+
+		dir2 := tempDir + "/dir2"
+		err = os.Mkdir(dir2, 0755)
+		assert.Nil(t, err)
+
+		dirs, err := readDirectories(tempDir)
+		assert.Nil(t, err)
+		assert.ElementsMatch(t, []string{"dir1", "dir2"}, dirs)
+	})
 }
