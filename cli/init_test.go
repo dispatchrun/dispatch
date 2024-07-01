@@ -28,11 +28,15 @@ func TestInitCommand(t *testing.T) {
 		t.Parallel()
 
 		tempFile := t.TempDir() + "/tempfile"
-		_, err := os.Create(tempFile)
+		file, err := os.Create(tempFile)
 		assert.Nil(t, err)
 
 		result, _ := directoryExists(tempFile)
 		assert.False(t, result)
+
+		// Clean up
+		err = file.Close()
+		assert.Nil(t, err)
 	})
 
 	t.Run("isDirectoryEmpty returns true for empty directory", func(t *testing.T) {
@@ -50,11 +54,15 @@ func TestInitCommand(t *testing.T) {
 		tempDir := t.TempDir()
 
 		tempFile := tempDir + "/tempfile"
-		_, err := os.Create(tempFile)
+		file, err := os.Create(tempFile)
 		assert.Nil(t, err)
 
 		result, _ := isDirectoryEmpty(tempDir)
 		assert.False(t, result)
+
+		// Clean up
+		err = file.Close()
+		assert.Nil(t, err)
 	})
 
 	t.Run("downloadAndExtractTemplates downloads and extracts templates", func(t *testing.T) {
@@ -93,13 +101,17 @@ func TestInitCommand(t *testing.T) {
 		src := tempDir + "/srcfile"
 		dest := tempDir + "/destfile"
 
-		_, err := os.Create(src)
+		file, err := os.Create(src)
 		assert.Nil(t, err)
 
 		err = copyFile(src, dest)
 		assert.Nil(t, err)
 
 		_, err = os.Stat(dest)
+		assert.Nil(t, err)
+
+		// Clean up
+		err = file.Close()
 		assert.Nil(t, err)
 	})
 
@@ -127,7 +139,7 @@ func TestInitCommand(t *testing.T) {
 		tempDir := t.TempDir()
 
 		file := tempDir + "/file"
-		_, err := os.Create(file)
+		f, err := os.Create(file)
 		assert.Nil(t, err)
 
 		dir := tempDir + "/dir"
@@ -141,6 +153,10 @@ func TestInitCommand(t *testing.T) {
 		assert.NotNil(t, err)
 		_, err = os.Stat(dir)
 		assert.NotNil(t, err)
+
+		// Clean up
+		err = f.Close()
+		assert.Nil(t, err)
 	})
 
 	t.Run("readDirectories returns all subdirectories", func(t *testing.T) {
