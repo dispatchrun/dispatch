@@ -18,7 +18,7 @@ import (
 const (
 	githubTarballURL = "https://github.com/%s/tarball/main"
 	githubAPIURL     = "https://api.github.com/repos/%s/branches/main"
-	repo             = "dispatchrun/dispatch-examples"
+	repo             = "dispatchrun/dispatch-templates"
 	dispatchUserDir  = "dispatch"
 )
 
