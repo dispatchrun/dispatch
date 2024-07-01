@@ -280,9 +280,9 @@ func copyFile(srcFile string, dstFile string) error {
 
 func initCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "init <template> [path]",
-		Short: "Initialize a new Dispatch project",
-		// Args:  cobra.MinimumNArgs(1),
+		Use:     "init <template> [path]",
+		Short:   "Initialize a new Dispatch project",
+		GroupID: "dispatch",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// get or create the Dispatch templates directory
 			dispatchUserDirPath, err := getAppDataDir(dispatchUserDir)
