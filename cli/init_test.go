@@ -146,6 +146,10 @@ func TestInitCommand(t *testing.T) {
 		err = os.Mkdir(dir, 0755)
 		assert.Nil(t, err)
 
+		// Clean up
+		err = f.Close()
+		assert.Nil(t, err)
+
 		err = cleanDirectory(tempDir)
 		assert.Nil(t, err)
 
@@ -153,10 +157,6 @@ func TestInitCommand(t *testing.T) {
 		assert.NotNil(t, err)
 		_, err = os.Stat(dir)
 		assert.NotNil(t, err)
-
-		// Clean up
-		err = f.Close()
-		assert.Nil(t, err)
 	})
 
 	t.Run("readDirectories returns all subdirectories", func(t *testing.T) {
