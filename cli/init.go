@@ -312,29 +312,22 @@ func initCommand() *cobra.Command {
 
 			// update the templates if the latest commit SHA is different
 			if remoteSHA != "" && string(sha) != remoteSHA {
-				cmd.Println("Templates update available. Do you want to download the latest templates? [y/N]")
+				cmd.Printf("Downloading templates update...\n")
+				err = downloadAndExtractTemplates(dispatchTemplatesDirPath)
+				if err != nil {
+					cmd.Printf("failed to download and extract templates: %v", err)
+				} else {
+					cmd.Print("Templates have been updated\n\n")
+					// TODO: possible improvement:
+					// find which templates have been added/removed/modified
+					// and/or
+					// show last n commit messages as changes
+				}
 
-				var response string
-				fmt.Scanln(&response)
-
-				if strings.ToLower(response) == "y" {
-					cmd.Printf("Downloading templates\n")
-					err = downloadAndExtractTemplates(dispatchTemplatesDirPath)
-					if err != nil {
-						cmd.Printf("failed to download and extract templates: %v", err)
-					} else {
-						cmd.Print("Templates have been updated\n\n")
-						// TODO: possible improvement:
-						// find which templates have been added/removed/modified
-						// and/or
-						// show last n commit messages as changes
-					}
-
-					// save the latest commit SHA
-					err = os.WriteFile(dispatchTemplatesHashPath, []byte(remoteSHA), 0644)
-					if err != nil {
-						cmd.Printf("failed to save templates SHA: %v", err)
-					}
+				// save the latest commit SHA
+				err = os.WriteFile(dispatchTemplatesHashPath, []byte(remoteSHA), 0644)
+				if err != nil {
+					cmd.Printf("failed to save templates SHA: %v", err)
 				}
 			}
 
