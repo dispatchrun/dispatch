@@ -133,32 +133,6 @@ func TestInitCommand(t *testing.T) {
 		assert.Nil(t, err)
 	})
 
-	t.Run("cleanDirectory removes all files and directories", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-
-		file := tempDir + "/file"
-		f, err := os.Create(file)
-		assert.Nil(t, err)
-
-		dir := tempDir + "/dir"
-		err = os.Mkdir(dir, 0755)
-		assert.Nil(t, err)
-
-		// Clean up
-		err = f.Close()
-		assert.Nil(t, err)
-
-		err = cleanDirectory(tempDir)
-		assert.Nil(t, err)
-
-		_, err = os.Stat(file)
-		assert.NotNil(t, err)
-		_, err = os.Stat(dir)
-		assert.NotNil(t, err)
-	})
-
 	t.Run("readDirectories returns all subdirectories", func(t *testing.T) {
 		t.Parallel()
 

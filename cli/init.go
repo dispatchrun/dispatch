@@ -203,28 +203,6 @@ func readDirectories(path string) ([]string, error) {
 	return directories, nil
 }
 
-func cleanDirectory(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-
-	names, err := d.Readdirnames(-1)
-	if err != nil {
-		return err
-	}
-
-	for _, name := range names {
-		err = os.RemoveAll(filepath.Join(dir, name))
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func copyDir(src string, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -376,7 +354,7 @@ func initCommand() *cobra.Command {
 
 			if !isTemplateFound {
 				cmd.SilenceUsage = true
-				cmd.Printf("Template %s is not supported.\n\nAvailable templates:\n %s", wantedTemplate, templatesList)
+				cmd.Printf("Template %s is not supported.\n\nAvailable templates:\n%s", wantedTemplate, templatesList)
 				return nil
 			}
 
@@ -407,25 +385,12 @@ func initCommand() *cobra.Command {
 			// check if the if directory exists and is empty
 			if exists {
 				isEmpty, err := isDirectoryEmpty(directory)
+				cmd.SilenceUsage = true
 				if err != nil {
-					cmd.SilenceUsage = true
 					return fmt.Errorf("failed to check if directory is empty: %w", err)
 				}
 				if !isEmpty {
-					cmd.Printf("Directory %v is not empty. Do you want to overwrite it? [y/N]\n", directory)
-
-					var response string
-					fmt.Scanln(&response)
-
-					if strings.ToLower(response) == "y" {
-						err := cleanDirectory(directory)
-						if err != nil {
-							cmd.SilenceUsage = true
-							return fmt.Errorf("failed to clean directory: %w", err)
-						}
-					} else {
-						return nil
-					}
+					return fmt.Errorf("could not create template in %s: directory is not empty", directory)
 				}
 			}
 			path, err := filepath.Abs(directory)
