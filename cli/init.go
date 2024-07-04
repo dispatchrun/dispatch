@@ -51,7 +51,7 @@ func isDirectoryEmpty(path string) (bool, error) {
 		return true, nil
 	}
 	// Some other error occurred
-	return true, err
+	return false, err
 }
 
 func downloadAndExtractTemplates(destDir string) error {
