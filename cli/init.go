@@ -256,160 +256,162 @@ func copyFile(srcFile string, dstFile string) error {
 	return os.Chmod(dstFile, srcInfo.Mode())
 }
 
+func initRunE(cmd *cobra.Command, args []string) error {
+	// get or create the Dispatch templates directory
+	dispatchUserDirPath, err := getAppDataDir(dispatchUserDir)
+	if err != nil {
+		fmt.Printf("failed to get Dispatch templates directory: %s", err)
+	}
+
+	// well-known paths for Dispatch templates
+	dispatchTemplatesDirPath := filepath.Join(dispatchUserDirPath, "templates")
+	dispatchTemplatesHashPath := filepath.Join(dispatchUserDirPath, "templates.sha")
+
+	// read the latest commit SHA
+	sha, err := os.ReadFile(dispatchTemplatesHashPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			cmd.SilenceUsage = true
+			cmd.PrintErrf("failed to read templates SHA: %s", err)
+		}
+	}
+
+	// get the latest commit SHA from the templates repository
+	url := fmt.Sprintf(githubAPIURL, repo)
+	remoteSHA, err := getLatestCommitSHA(url)
+	if err != nil {
+		cmd.Printf("failed to get latest commit SHA: %v", err)
+	}
+
+	// update the templates if the latest commit SHA is different
+	if remoteSHA != "" && string(sha) != remoteSHA {
+		cmd.Printf("Downloading templates update...\n")
+		err = downloadAndExtractTemplates(dispatchTemplatesDirPath)
+		if err != nil {
+			cmd.Printf("failed to download and extract templates: %v", err)
+		} else {
+			cmd.Print("Templates have been updated\n\n")
+			// TODO: possible improvement:
+			// find which templates have been added/removed/modified
+			// and/or
+			// show last n commit messages as changes
+		}
+
+		// save the latest commit SHA
+		err = os.WriteFile(dispatchTemplatesHashPath, []byte(remoteSHA), 0644)
+		if err != nil {
+			cmd.Printf("failed to save templates SHA: %v", err)
+		}
+	}
+
+	// read the available templates
+	templates, err := readDirectories(dispatchTemplatesDirPath)
+
+	if err != nil {
+		cmd.SilenceUsage = true
+		if os.IsNotExist(err) {
+			cmd.PrintErrf("templates directory does not exist in %s. Please run `dispatch init` to download the templates", dispatchTemplatesDirPath)
+		}
+		cmd.PrintErrf("failed to read templates directory. : %s", err)
+	}
+
+	if len(templates) == 0 {
+		cmd.SilenceUsage = true
+		return fmt.Errorf("templates directory %s is corrupted. Please clean it and try again", dispatchTemplatesDirPath)
+	}
+
+	var templatesList string = ""
+
+	for _, template := range templates {
+		templatesList += "  " + template + "\n"
+	}
+	cmd.SetUsageTemplate(cmd.UsageTemplate() + "\nAvailable templates:\n" + templatesList)
+
+	// if no arguments are provided (user wants to download/update templates only), print the usage
+	if len(args) == 0 {
+		cmd.Print(cmd.UsageString())
+		return nil
+	}
+
+	var directory string
+	var exists = true
+
+	wantedTemplate := args[0]
+	isTemplateFound := false
+
+	// find template in the available templates
+	for _, template := range templates {
+		if template == wantedTemplate {
+			isTemplateFound = true
+			break
+		}
+	}
+
+	if !isTemplateFound {
+		cmd.SilenceUsage = true
+		cmd.Printf("Template %s is not supported.\n\nAvailable templates:\n%s", wantedTemplate, templatesList)
+		return nil
+	}
+
+	// check if a directory is provided
+	if len(args) > 1 {
+		directory = args[1]
+		flag, err := directoryExists(directory)
+		exists = flag
+
+		if err != nil {
+			cmd.SilenceUsage = true
+			return fmt.Errorf("failed to check if directory exists: %w", err)
+		}
+
+		// create the directory if it doesn't exist
+		if !exists {
+			err := os.MkdirAll(directory, 0755)
+			if err != nil {
+				cmd.SilenceUsage = true
+				return fmt.Errorf("failed to create directory %v: %w", directory, err)
+			}
+			exists = true
+		}
+	} else {
+		directory = "."
+	}
+
+	// check if the if directory exists and is empty
+	if exists {
+		isEmpty, err := isDirectoryEmpty(directory)
+		cmd.SilenceUsage = true
+		if err != nil {
+			return fmt.Errorf("failed to check if directory is empty: %w", err)
+		}
+		if !isEmpty {
+			return fmt.Errorf("could not create template in %s: directory is not empty", directory)
+		}
+	}
+	path, err := filepath.Abs(directory)
+	if err != nil {
+		cmd.SilenceUsage = true
+		return fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	cmd.Printf("Template %s was created in %s\n", wantedTemplate, path)
+
+	// copy the template to the destination
+	err = copyDir(filepath.Join(dispatchTemplatesDirPath, wantedTemplate), path)
+	if err != nil {
+		cmd.SilenceUsage = true
+		return fmt.Errorf("failed to copy template: %w", err)
+	}
+
+	return nil
+}
+
 func initCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "init <template> [path]",
 		Short:   "Initialize a new Dispatch project",
 		GroupID: "dispatch",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// get or create the Dispatch templates directory
-			dispatchUserDirPath, err := getAppDataDir(dispatchUserDir)
-			if err != nil {
-				fmt.Printf("failed to get Dispatch templates directory: %s", err)
-			}
-
-			// well-known paths for Dispatch templates
-			dispatchTemplatesDirPath := filepath.Join(dispatchUserDirPath, "templates")
-			dispatchTemplatesHashPath := filepath.Join(dispatchUserDirPath, "templates.sha")
-
-			// read the latest commit SHA
-			sha, err := os.ReadFile(dispatchTemplatesHashPath)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					cmd.SilenceUsage = true
-					cmd.PrintErrf("failed to read templates SHA: %s", err)
-				}
-			}
-
-			// get the latest commit SHA from the templates repository
-			url := fmt.Sprintf(githubAPIURL, repo)
-			remoteSHA, err := getLatestCommitSHA(url)
-			if err != nil {
-				cmd.Printf("failed to get latest commit SHA: %v", err)
-			}
-
-			// update the templates if the latest commit SHA is different
-			if remoteSHA != "" && string(sha) != remoteSHA {
-				cmd.Printf("Downloading templates update...\n")
-				err = downloadAndExtractTemplates(dispatchTemplatesDirPath)
-				if err != nil {
-					cmd.Printf("failed to download and extract templates: %v", err)
-				} else {
-					cmd.Print("Templates have been updated\n\n")
-					// TODO: possible improvement:
-					// find which templates have been added/removed/modified
-					// and/or
-					// show last n commit messages as changes
-				}
-
-				// save the latest commit SHA
-				err = os.WriteFile(dispatchTemplatesHashPath, []byte(remoteSHA), 0644)
-				if err != nil {
-					cmd.Printf("failed to save templates SHA: %v", err)
-				}
-			}
-
-			// read the available templates
-			templates, err := readDirectories(dispatchTemplatesDirPath)
-
-			if err != nil {
-				cmd.SilenceUsage = true
-				if os.IsNotExist(err) {
-					cmd.PrintErrf("templates directory does not exist in %s. Please run `dispatch init` to download the templates", dispatchTemplatesDirPath)
-				}
-				cmd.PrintErrf("failed to read templates directory. : %s", err)
-			}
-
-			if len(templates) == 0 {
-				cmd.SilenceUsage = true
-				return fmt.Errorf("templates directory %s is corrupted. Please clean it and try again", dispatchTemplatesDirPath)
-			}
-
-			var templatesList string = ""
-
-			for _, template := range templates {
-				templatesList += "  " + template + "\n"
-			}
-			cmd.SetUsageTemplate(cmd.UsageTemplate() + "\nAvailable templates:\n" + templatesList)
-
-			// if no arguments are provided (user wants to download/update templates only), print the usage
-			if len(args) == 0 {
-				cmd.Print(cmd.UsageString())
-				return nil
-			}
-
-			var directory string
-			var exists = true
-
-			wantedTemplate := args[0]
-			isTemplateFound := false
-
-			// find template in the available templates
-			for _, template := range templates {
-				if template == wantedTemplate {
-					isTemplateFound = true
-					break
-				}
-			}
-
-			if !isTemplateFound {
-				cmd.SilenceUsage = true
-				cmd.Printf("Template %s is not supported.\n\nAvailable templates:\n%s", wantedTemplate, templatesList)
-				return nil
-			}
-
-			// check if a directory is provided
-			if len(args) > 1 {
-				directory = args[1]
-				flag, err := directoryExists(directory)
-				exists = flag
-
-				if err != nil {
-					cmd.SilenceUsage = true
-					return fmt.Errorf("failed to check if directory exists: %w", err)
-				}
-
-				// create the directory if it doesn't exist
-				if !exists {
-					err := os.MkdirAll(directory, 0755)
-					if err != nil {
-						cmd.SilenceUsage = true
-						return fmt.Errorf("failed to create directory %v: %w", directory, err)
-					}
-					exists = true
-				}
-			} else {
-				directory = "."
-			}
-
-			// check if the if directory exists and is empty
-			if exists {
-				isEmpty, err := isDirectoryEmpty(directory)
-				cmd.SilenceUsage = true
-				if err != nil {
-					return fmt.Errorf("failed to check if directory is empty: %w", err)
-				}
-				if !isEmpty {
-					return fmt.Errorf("could not create template in %s: directory is not empty", directory)
-				}
-			}
-			path, err := filepath.Abs(directory)
-			if err != nil {
-				cmd.SilenceUsage = true
-				return fmt.Errorf("failed to get absolute path: %w", err)
-			}
-
-			cmd.Printf("Template %s was created in %s\n", wantedTemplate, path)
-
-			// copy the template to the destination
-			err = copyDir(filepath.Join(dispatchTemplatesDirPath, wantedTemplate), path)
-			if err != nil {
-				cmd.SilenceUsage = true
-				return fmt.Errorf("failed to copy template: %w", err)
-			}
-
-			return nil
-		},
+		RunE:    initRunE,
 	}
 
 	return cmd
