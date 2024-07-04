@@ -55,6 +55,27 @@ func isDirectoryEmpty(path string) (bool, error) {
 	return false, err
 }
 
+func downloadFile(url string, path string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download file %s: %s", url, resp.Status)
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, resp.Body)
+	return err
+}
+
 func downloadAndExtractTemplates(destDir string) error {
 	url := fmt.Sprintf(githubTarballURL, repo)
 	resp, err := http.Get(url)
@@ -292,8 +313,6 @@ func prepareGoTemplate(path string) error {
 		return err
 	}
 
-	// TODO: create .gitignore file?
-
 	return nil
 }
 
@@ -451,8 +470,16 @@ func initRunE(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 			return fmt.Errorf("failed to prepare Go template: %w", err)
 		}
+		err = downloadFile("https://raw.githubusercontent.com/github/gitignore/master/Go.gitignore", filepath.Join(path, ".gitignore"))
+		if err != nil {
+			cmd.PrintErrf("failed to download .gitignore for Go: %v", err)
+		}
+	case "python":
+		err = downloadFile("https://raw.githubusercontent.com/github/gitignore/master/Python.gitignore", filepath.Join(path, ".gitignore"))
+		if err != nil {
+			cmd.PrintErrf("failed to download .gitignore for Python: %v", err)
+		}
 	}
-
 	return nil
 }
 

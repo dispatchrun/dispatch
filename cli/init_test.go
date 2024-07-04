@@ -193,4 +193,37 @@ func TestInitCommand(t *testing.T) {
 		err = file.Close()
 		assert.Nil(t, err)
 	})
+
+	t.Run("downloadFile downloads file", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		filePath := tempDir + "/file"
+
+		err := downloadFile("https://raw.githubusercontent.com/dispatchrun/dispatch/main/README.md", filePath)
+		assert.Nil(t, err)
+
+		_, err = os.Stat(filePath)
+		assert.Nil(t, err)
+	})
+
+	t.Run("downloadFile returns error for invalid URL", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		filePath := tempDir + "/file"
+
+		err := downloadFile("invalidurl", filePath)
+		assert.NotNil(t, err)
+	})
+
+	t.Run("downloadFile returns error when response status code is not 200", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		filePath := tempDir + "/file"
+
+		err := downloadFile("https://httpbin.org/status/404", filePath)
+		assert.NotNil(t, err)
+	})
 }
