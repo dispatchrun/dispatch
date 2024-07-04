@@ -44,6 +44,7 @@ func createMainCommand() *cobra.Command {
 
 	// Passing the global variables to the commands make testing in parallel possible.
 	cmd.AddCommand(loginCommand())
+	cmd.AddCommand(initCommand())
 	cmd.AddCommand(switchCommand(DispatchConfigPath))
 	cmd.AddCommand(verificationCommand())
 	cmd.AddCommand(runCommand())
