@@ -2,6 +2,7 @@ package cli
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -256,6 +257,46 @@ func copyFile(srcFile string, dstFile string) error {
 	return os.Chmod(dstFile, srcInfo.Mode())
 }
 
+func prepareGoTemplate(path string) error {
+	moduleName := filepath.Base(path)
+	goModPath := filepath.Join(path, "go.mod")
+	moduleHeader := fmt.Sprintf("module %s", moduleName)
+
+	// Update the go.mod file with the correct module name
+	file, err := os.Open(goModPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Read all lines from the file
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	// replace the module header
+	lines[0] = moduleHeader
+
+	// Join the lines back into a single string with newlines
+	output := strings.Join(lines, "\n") + "\n"
+
+	// Write the modified content back to the file
+	err = os.WriteFile(goModPath, []byte(output), 0644)
+	if err != nil {
+		return err
+	}
+
+	// TODO: create .gitignore file?
+
+	return nil
+}
+
 func initRunE(cmd *cobra.Command, args []string) error {
 	// get or create the Dispatch templates directory
 	dispatchUserDirPath, err := getAppDataDir(dispatchUserDir)
@@ -401,6 +442,15 @@ func initRunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		cmd.SilenceUsage = true
 		return fmt.Errorf("failed to copy template: %w", err)
+	}
+
+	switch wantedTemplate {
+	case "go":
+		err := prepareGoTemplate(path)
+		if err != nil {
+			cmd.SilenceUsage = true
+			return fmt.Errorf("failed to prepare Go template: %w", err)
+		}
 	}
 
 	return nil

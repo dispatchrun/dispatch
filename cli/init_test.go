@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"os"
 	"testing"
 
@@ -149,5 +150,47 @@ func TestInitCommand(t *testing.T) {
 		dirs, err := readDirectories(tempDir)
 		assert.Nil(t, err)
 		assert.ElementsMatch(t, []string{"dir1", "dir2"}, dirs)
+	})
+
+	t.Run("prepareGoTemplate updates go.mod", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		projectName := "alpha"
+
+		// create project directory and  go.mod file
+		projectDir := tempDir + "/" + projectName
+		goModFile := projectDir + "/go.mod"
+
+		err := os.Mkdir(projectDir, 0755)
+		assert.Nil(t, err)
+
+		file, err := os.Create(goModFile)
+		assert.Nil(t, err)
+
+		// write some content to the file
+		_, err = file.WriteString("module randommodule")
+		assert.Nil(t, err)
+
+		// Clean up
+		err = file.Close()
+		assert.Nil(t, err)
+
+		err = prepareGoTemplate(projectDir)
+		assert.Nil(t, err)
+
+		// read first line of the file using scanner
+		file, err = os.Open(goModFile)
+		assert.Nil(t, err)
+
+		scanner := bufio.NewScanner(file)
+		scanner.Scan()
+		firstLine := scanner.Text()
+
+		assert.Equal(t, "module "+projectName, firstLine)
+
+		// Clean up
+		err = file.Close()
+		assert.Nil(t, err)
 	})
 }
