@@ -34,3 +34,5 @@ goreleaser/
 .netrc
 
 .dispatch
+
+docs/
