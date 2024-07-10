@@ -17,11 +17,19 @@ Support: support@dispatch.run
 `
 )
 
+var mainCommandText string
+
 func createMainCommand() *cobra.Command {
+	if isDocsBuild {
+		mainCommandText = "This is the main command for Dispatch CLI. Add a subcommand to make it useful."
+	} else {
+		mainCommandText = DispatchCmdLong
+	}
 	cmd := &cobra.Command{
 		Version: version(),
 		Use:     "dispatch",
-		Long:    DispatchCmdLong,
+		Long:    mainCommandText,
+		Short:   "Main command for Dispatch CLI",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return loadEnvFromFile(DotEnvFilePath)
 		},
@@ -49,6 +57,14 @@ func createMainCommand() *cobra.Command {
 	cmd.AddCommand(verificationCommand())
 	cmd.AddCommand(runCommand())
 	cmd.AddCommand(versionCommand())
+
+	// Generate markdown documentation
+	generateDocs(loginCommand(), "dispatch_login.md", "dispatch login")
+	generateDocs(initCommand(), "dispatch_init.md", "dispatch init")
+	generateDocs(switchCommand(DispatchConfigPath), "dispatch_switch.md", "dispatch switch")
+	generateDocs(verificationCommand(), "dispatch_verification.md", "dispatch verification")
+	generateDocs(runCommand(), "dispatch_run.md", "dispatch run")
+	generateDocs(versionCommand(), "dispatch_version.md", "dispatch version")
 
 	return cmd
 }
