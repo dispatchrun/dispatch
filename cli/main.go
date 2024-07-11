@@ -59,12 +59,7 @@ func createMainCommand() *cobra.Command {
 	cmd.AddCommand(versionCommand())
 
 	// Generate markdown documentation
-	generateDocs(loginCommand(), "dispatch_login.md", "dispatch login")
-	generateDocs(initCommand(), "dispatch_init.md", "dispatch init")
-	generateDocs(switchCommand(DispatchConfigPath), "dispatch_switch.md", "dispatch switch")
-	generateDocs(verificationCommand(), "dispatch_verification.md", "dispatch verification")
-	generateDocs(runCommand(), "dispatch_run.md", "dispatch run")
-	generateDocs(versionCommand(), "dispatch_version.md", "dispatch version")
+	generateDocs(cmd, "dispatch")
 
 	return cmd
 }
