@@ -1,0 +1,28 @@
+name: 'upload docs cli artifact'
+
+on:
+  pull_request:
+  push:
+    branches:
+      - gen_docs
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: .go-version
+
+      - name: 'Build CLI with docs support'
+        run: make dispatch-docs
+
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli_with_docs
+          path: ./build/linux/amd64/dispatch
