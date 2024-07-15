@@ -1,5 +1,6 @@
 project_name: dispatch
 dist: ./goreleaser/dist
+version: 2
 
 before:
   hooks:
@@ -9,7 +10,8 @@ gomod:
   proxy: true
 
 builds:
-  - main: .
+  - id: dispatch
+    main: .
     binary: dispatch
     mod_timestamp: "{{ .CommitTimestamp }}"
 
@@ -21,6 +23,25 @@ builds:
       - darwin
       - linux
       - windows
+
+  - id: dispatch-docs
+    main: .
+    binary: dispatch-docs
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    tags: docs
+
+    goarch:
+      - amd64
+
+    goos:
+      - linux
+
+archives:
+  - id: dispatch
+    builds: [dispatch]
+  - id: dispatch-docs
+    builds: [dispatch-docs]
+    name_template: "{{ .ProjectName }}_docs_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 release:
   github:
@@ -34,6 +55,8 @@ changelog:
 
 brews:
   - name: dispatch
+    ids:
+      - dispatch
     url_template: "https://github.com/dispatchrun/dispatch/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
 
     commit_author:
