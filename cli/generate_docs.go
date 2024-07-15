@@ -12,7 +12,9 @@ import (
 	"github.com/spf13/cobra/doc"
 )
 
-var isDocsBuild = true
+const DispatchCmdLong = "This is the main command for Dispatch CLI. Add a subcommand to make it useful."
+
+const RunExampleText = "```\ndispatch run [options] -- <command>\n```"
 
 func generateDocs(cmd *cobra.Command, title string) {
 	cmd.DisableAutoGenTag = true

@@ -56,15 +56,7 @@ var (
 	logPrefixSeparatorStyle = lipgloss.NewStyle().Foreground(grayColor)
 )
 
-var runExampleText string
-
 func runCommand() *cobra.Command {
-	if isDocsBuild {
-		runExampleText = "```\ndispatch run [options] -- <command>\n```"
-	} else {
-		runExampleText = "  dispatch run [options] -- <command>"
-	}
-
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run a Dispatch application",
@@ -73,7 +65,7 @@ func runCommand() *cobra.Command {
 The command to start the local application endpoint should be
 specified after the run command and its options:
 
-`+runExampleText+`
+`+RunExampleText+`
 
 Dispatch spawns the local application endpoint and then dispatches
 function calls to it continuously.
