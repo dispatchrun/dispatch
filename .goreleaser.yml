@@ -39,6 +39,10 @@ builds:
 archives:
   - id: dispatch
     builds: [dispatch]
+    format_overrides:
+      - goos: windows
+        format: zip
+
   - id: dispatch-docs
     builds: [dispatch-docs]
     name_template: "{{ .ProjectName }}_docs_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
