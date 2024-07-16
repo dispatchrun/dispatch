@@ -39,3 +39,7 @@ push: image
 update:
 	for ref in $$(yq -r '.deps[] | .remote + "/gen/go/" + .owner + "/" + .repository + "/protocolbuffers/go@" + .commit' proto/buf.lock); do go get $$ref; done
 	go mod tidy
+
+dispatch-docs:
+	${GO} build -tags docs -o ${DISPATCH} .
+	${DISPATCH}

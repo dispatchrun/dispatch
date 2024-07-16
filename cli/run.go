@@ -65,7 +65,7 @@ func runCommand() *cobra.Command {
 The command to start the local application endpoint should be
 specified after the run command and its options:
 
-  dispatch run [options] -- <command>
+`+RunExampleText+`
 
 Dispatch spawns the local application endpoint and then dispatches
 function calls to it continuously.

@@ -6,22 +6,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	DispatchCmdLong = `Welcome to Dispatch!
-
-To get started, use the login command to authenticate with Dispatch or create an account.
-
-Documentation: https://docs.dispatch.run
-Discord: https://dispatch.run/discord
-Support: support@dispatch.run
-`
-)
-
 func createMainCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Version: version(),
 		Use:     "dispatch",
 		Long:    DispatchCmdLong,
+		Short:   "Main command for Dispatch CLI",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return loadEnvFromFile(DotEnvFilePath)
 		},
@@ -49,6 +39,9 @@ func createMainCommand() *cobra.Command {
 	cmd.AddCommand(verificationCommand())
 	cmd.AddCommand(runCommand())
 	cmd.AddCommand(versionCommand())
+
+	// Generate markdown documentation
+	generateDocs(cmd, "dispatch")
 
 	return cmd
 }
